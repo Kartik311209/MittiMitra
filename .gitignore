@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.venv/
+artifacts/
+data/synthetic/
+data/real/
+data/app_data/
+.streamlit/
+.env
+.codex-build/
+logs/
+output/
+tmp/
+assets/maps/india-reference-boundary.png

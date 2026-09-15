@@ -1,0 +1,35 @@
+services:
+  api:
+    build: .
+    command: uvicorn soil_npk.api:app --host 0.0.0.0 --port 8000
+    environment:
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      TWILIO_VERIFY_SERVICE_SID: ${TWILIO_VERIFY_SERVICE_SID}
+      TWILIO_MESSAGING_SERVICE_SID: ${TWILIO_MESSAGING_SERVICE_SID:-}
+      SCHEME_ADMIN_KEY: ${SCHEME_ADMIN_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.6-flash}
+      GEMINI_TRANSCRIPTION_MODEL: ${GEMINI_TRANSCRIPTION_MODEL:-gemini-3.6-flash}
+      GEMINI_TTS_MODEL: ${GEMINI_TTS_MODEL:-gemini-2.5-flash-preview-tts}
+      GEMINI_TTS_VOICE: ${GEMINI_TTS_VOICE:-Kore}
+      OTP_DELIVERY_MODE: ${OTP_DELIVERY_MODE:-twilio}
+      OTP_SCREEN_SECRET: ${OTP_SCREEN_SECRET:-local-development-only}
+      NPK_APP_DATA_DIR: /app/data/app_data
+      NPK_MODEL_PATH: /app/artifacts/npk_baseline.npz
+      CORS_ORIGINS: http://localhost:8501
+    volumes:
+      - ./data/app_data:/app/data/app_data
+      - ./artifacts:/app/artifacts
+    ports:
+      - "8000:8000"
+
+  dashboard:
+    build: .
+    command: streamlit run dashboard.py --server.address 0.0.0.0 --server.port 8501
+    environment:
+      BACKEND_URL: http://api:8000
+    depends_on:
+      - api
+    ports:
+      - "8501:8501"
