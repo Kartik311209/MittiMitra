@@ -1319,6 +1319,91 @@ def render_farmer_activity_map() -> None:
         st.caption("PM-KISAN: 20th instalment snapshot • 04 Aug 2025")
 
 
+def render_crop_disease_check() -> None:
+    """Render a separate, confidence-aware crop-health workflow for a signed-in farmer."""
+    language = language_mode()
+    labels = {
+        "Hindi": {
+            "eyebrow": "03 / फसल स्वास्थ्य", "title": "फसल रोग जाँच", "copy": "फसल/पत्ते की साफ फोटो से शुरुआती AI संकेत देखें। नतीजा पक्की बीमारी की पुष्टि या दवा की सलाह नहीं है।",
+            "status": "मॉडल स्थिति", "not_ready": "भारतीय खेतों की लेबल वाली फोटो तैयार की गई हैं, लेकिन जाँच मॉडल अभी विश्वसनीय नहीं है। क्षेत्र-वार परीक्षण पूरा होने के बाद ही यह सुविधा चालू होगी।", "ready": "labelled crop-photo model तैयार है", "upload": "फसल या पत्ते की फोटो अपलोड करें", "preview": "इसी फोटो पर फसल-रोग जाँच चलेगी", "run": "फसल जाँच चलाएँ", "reading": "फोटो के दृश्य संकेत देखे जा रहे हैं...", "result": "फोटो का शुरुआती परिणाम", "match": "संभावित वर्ग", "crop": "फसल", "finding": "संकेत", "confidence": "विश्वास", "healthy": "सामान्य/स्वस्थ संकेत", "attention": "विशेषज्ञ से पुष्टि करें", "review": "इस confidence या गैर-स्वस्थ संकेत के लिए KVK/कृषि अधिकारी से फोटो और खेत की जाँच कराएँ।", "next": "सुरक्षित अगला कदम", "privacy": "फोटो का परिणाम बनने के बाद API उसे सेव नहीं करती।", "model": "मॉडल जानकारी", "training": "लोकल labelled-image similarity baseline", "unavailable": "फसल-रोग सेवा अभी उपलब्ध नहीं है।",
+        },
+        "Hinglish": {
+            "eyebrow": "03 / fasal health", "title": "Crop disease check", "copy": "Fasal ya patte ki clear photo se initial AI signal dekhein. Yeh confirmed disease diagnosis ya dawa ki advice nahi hai.",
+            "status": "Model status", "not_ready": "Indian field photos prepare ho chuki hain, lekin model abhi reliable nahi hai. Region-wise testing ke baad hi yeh check live hoga.", "ready": "Labelled crop-photo model ready hai", "upload": "Fasal ya patte ki photo upload karein", "preview": "Isi photo par crop-disease check chalega", "run": "Crop check chalayen", "reading": "Photo ke visual signals padhe ja rahe hain...", "result": "Is photo ka initial result", "match": "Likely class", "crop": "Crop", "finding": "Signal", "confidence": "Confidence", "healthy": "Healthy / normal signal", "attention": "Expert confirmation needed", "review": "Is confidence ya non-healthy signal ke liye KVK/agriculture officer ko photo aur field dikhakar confirm karein.", "next": "Safe next step", "privacy": "Result banne ke baad API photo save nahi karti.", "model": "Model details", "training": "Local labelled-image similarity baseline", "unavailable": "Crop-disease service abhi available nahi hai.",
+        },
+        "English": {
+            "eyebrow": "03 / crop health", "title": "Crop disease check", "copy": "Use a clear crop or leaf photo for an initial AI signal. This is not a confirmed disease diagnosis or pesticide advice.",
+            "status": "Model status", "not_ready": "Labelled Indian field photos are prepared, but the model is not yet reliable. This check will open only after region-wise validation.", "ready": "Labelled crop-photo model is ready", "upload": "Upload a crop or leaf photo", "preview": "This photo will be used for the crop-disease check", "run": "Run crop check", "reading": "Reading visual signals from the photo...", "result": "Initial result for this photo", "match": "Likely class", "crop": "Crop", "finding": "Signal", "confidence": "Confidence", "healthy": "Healthy / normal signal", "attention": "Expert confirmation needed", "review": "For this confidence or non-healthy signal, confirm the photo and field condition with a KVK or agriculture officer.", "next": "Safe next step", "privacy": "The API does not save the photo after returning its result.", "model": "Model details", "training": "Local labelled-image similarity baseline", "unavailable": "The crop-disease service is currently unavailable.",
+        },
+    }[language]
+    token = st.session_state.get("session_token", "")
+    status, status_error = api_call("GET", "/crop-disease/status", headers={"X-Session-Token": token})
+    st.markdown(f"<br><div class='eyebrow'>{labels['eyebrow']}</div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        heading_column, status_column = st.columns([3, 1], vertical_alignment="center")
+        with heading_column:
+            st.markdown(f"#### {labels['title']}")
+            st.caption(labels["copy"])
+        with status_column:
+            st.caption(labels["status"])
+            if status and bool(status.get("ready")):
+                st.success(labels["ready"])
+            else:
+                st.warning(labels["unavailable"])
+
+        if status_error:
+            st.error(status_error)
+            return
+        if not status or not bool(status.get("ready")):
+            st.info(labels["not_ready"])
+            st.caption(labels["privacy"])
+            return
+
+        with st.form("crop_disease_photo_form", border=False):
+            crop_photo = st.file_uploader(
+                labels["upload"],
+                type=["jpg", "jpeg", "png", "webp"],
+                max_upload_size=8,
+                key="crop_disease_photo",
+            )
+            submitted = st.form_submit_button(labels["run"], icon="🌿", type="primary", width="stretch")
+        if crop_photo:
+            st.image(crop_photo, caption=labels["preview"], width="stretch")
+        if submitted:
+            if crop_photo is None:
+                st.warning(labels["upload"])
+            else:
+                with st.spinner(labels["reading"]):
+                    response, error = api_call(
+                        "POST",
+                        "/crop-disease/predict",
+                        headers={"X-Session-Token": token},
+                        files={"image": (crop_photo.name, crop_photo.getvalue(), crop_photo.type or "image/jpeg")},
+                    )
+                if error or not response:
+                    st.error(error or labels["unavailable"])
+                else:
+                    st.session_state.crop_disease_result = response.get("prediction")
+
+        result = st.session_state.get("crop_disease_result")
+        if isinstance(result, dict):
+            st.divider()
+            st.markdown(f"#### {labels['result']}")
+            result_columns = st.columns(4)
+            result_columns[0].metric(labels["match"], str(result.get("label", "-")))
+            result_columns[1].metric(labels["crop"], str(result.get("crop", "-")))
+            result_columns[2].metric(labels["finding"], str(result.get("finding", "-")))
+            result_columns[3].metric(labels["confidence"], f"{float(result.get('confidence_percent', 0)):.1f}%")
+            if bool(result.get("healthy")) and not bool(result.get("needs_expert_review")):
+                st.success(labels["healthy"])
+            else:
+                st.warning(labels["attention"])
+                st.caption(labels["review"])
+            st.info(f"**{labels['next']}:** {result.get('next_step', '')}")
+            st.caption(f"{labels['model']}: {labels['training']} • {result.get('model_note', '')}")
+            st.caption(labels["privacy"])
+
+
 def dashboard() -> None:
     render_language_control()
     header, profile_action, action = st.columns([4.3, 1.6, 1])
@@ -1432,6 +1517,8 @@ def dashboard() -> None:
                         st.success(f"Model automatically retrain ho gaya ({training['labeled_samples']} verified samples).")
                     else:
                         st.info(f"Lab result save ho gaya. Auto-training {training['minimum_required']} verified samples par chalegi; abhi {training['labeled_samples']} hain.")
+    st.markdown("<br>", unsafe_allow_html=True)
+    render_crop_disease_check()
     st.markdown("<br>", unsafe_allow_html=True)
     render_account_and_lab_tools()
     st.markdown("<br>", unsafe_allow_html=True)

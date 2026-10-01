@@ -4,9 +4,12 @@ __pycache__/
 artifacts/
 data/synthetic/
 data/real/
+data/crop_disease/*
+!data/crop_disease/README.md
 data/app_data/
 .streamlit/
 .env
+.vercel/
 .codex-build/
 logs/
 output/

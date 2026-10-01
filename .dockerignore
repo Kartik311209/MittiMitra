@@ -3,5 +3,13 @@
 __pycache__/
 *.py[cod]
 data/app_data/
+data/crop_disease/
+data/real/
+data/synthetic/
+artifacts/
+output/
+tmp/
+logs/
 .streamlit/
 .env
+.vercel/

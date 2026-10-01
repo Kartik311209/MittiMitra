@@ -1,5 +1,10 @@
 # Soil NPK Analysis Using AI & ML
 
+Public website: the static Vercel-ready landing page is in [`web/`](web/).
+It is intentionally separate from the farmer portal. The portal needs a
+container host, persistent database/uploads, real SMS OTP, and HTTPS before a
+public launch; local screen OTP is for development only.
+
 A synthetic-data MVP that estimates Nitrogen (N), Phosphorus (P), and Potassium (K) from a soil image. It is designed so future field images and matching laboratory reports can be used with the same training contract.
 
 > **Scientific limitation:** camera RGB images cannot replace laboratory nutrient testing. The included model learns deliberately created relationships in synthetic images, so its outputs are prototype estimates only.
@@ -64,6 +69,34 @@ The registration order is **State → District/City → Tehsil → Village**. St
 Every soil image upload is saved under `data/app_data/uploads/` with the farmer account and the model prediction. It is **not** used as NPK training data just because it is a photo: a photo has no ground-truth nutrient value. When a certified lab report is entered for that same sample, the server exports it to the training dataset. At 20 verified image + lab-report samples (configurable with `MIN_LABELED_SAMPLES`), every new verified result automatically retrains and replaces the baseline model.
 
 This protects farmers from a misleading feedback loop where an earlier photo estimate is treated as if it were a real lab result.
+
+### Crop disease check (labelled-photo baseline)
+
+After login, farmers also have a **Crop disease check**. It accepts one JPG,
+PNG or WEBP crop photo and displays the predicted labelled class, confidence,
+and a safe next step directly below that photo. The temporary crop photo is
+deleted by the API after the response; it is not silently added to the NPK
+training set.
+
+The feature deliberately stays unavailable until a crop-photo model has been
+trained and validated on relevant field images. Five Indian field-photo source
+archives have been prepared locally for research; they do **not** cover all
+Indian crops or agro-climatic zones. Their origin, label limitations, licence
+notes and candidate training/evaluation commands are documented in
+[data/crop_disease/README.md](data/crop_disease/README.md).
+
+For a research-only candidate that does not activate the portal, run:
+
+```powershell
+$env:PYTHONPATH = "$PWD\src"
+.\.venv\Scripts\python.exe -m soil_npk.crop_disease --dataset-dir .\data\crop_disease\prepared --model-path .\artifacts\crop_disease_candidate.npz
+.\.venv\Scripts\python.exe -m soil_npk.evaluate_crop_disease --model-path .\artifacts\crop_disease_candidate.npz --test-dir .\data\crop_disease\prepared\test --report-path .\artifacts\crop_disease_candidate_evaluation.json
+```
+
+The supplied model is a transparent image-similarity baseline, not a confirmed
+disease diagnosis. Low-confidence and non-healthy results must be verified by
+a KVK, agriculture officer, or qualified agronomist; the app never recommends
+a pesticide or dosage from a photo alone.
 
 ## Future real-data migration
 

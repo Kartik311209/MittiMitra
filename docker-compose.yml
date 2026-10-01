@@ -1,7 +1,11 @@
 services:
   api:
     build: .
-    command: uvicorn soil_npk.api:app --host 0.0.0.0 --port 8000
+    command: >-
+      sh -c 'if [ ! -f /app/artifacts/npk_baseline.npz ]; then
+      cp /app/bootstrap_artifacts/npk_baseline.npz /app/artifacts/npk_baseline.npz;
+      fi;
+      exec uvicorn soil_npk.api:app --host 0.0.0.0 --port 8000'
     environment:
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
@@ -17,6 +21,8 @@ services:
       OTP_SCREEN_SECRET: ${OTP_SCREEN_SECRET:-local-development-only}
       NPK_APP_DATA_DIR: /app/data/app_data
       NPK_MODEL_PATH: /app/artifacts/npk_baseline.npz
+      CROP_DISEASE_MODEL_PATH: /app/artifacts/crop_disease_baseline.npz
+      CROP_DISEASE_MIN_CONFIDENCE: ${CROP_DISEASE_MIN_CONFIDENCE:-65}
       CORS_ORIGINS: http://localhost:8501
     volumes:
       - ./data/app_data:/app/data/app_data

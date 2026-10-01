@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
@@ -60,6 +61,7 @@ from .farmer_service import (
     verify_otp,
 )
 from .prediction import predict_image
+from .crop_disease import crop_disease_model_status, predict_crop_disease
 from .locations import districts, initialise_locations, location_status, states, tehsils, villages
 from .assistant_service import (
     AssistantConfigurationError,
@@ -446,6 +448,42 @@ def attach_lab_result(
 @app.get("/model-status")
 def get_model_status(_: Annotated[dict[str, object], Depends(current_farmer)]) -> dict[str, object]:
     return model_status()
+
+
+@app.get("/crop-disease/status")
+def get_crop_disease_status(_: Annotated[dict[str, object], Depends(current_farmer)]) -> dict[str, object]:
+    """Expose only readiness metadata; never reveal training images or their source."""
+    return crop_disease_model_status()
+
+
+@app.post("/crop-disease/predict")
+async def classify_crop_disease(
+    farmer: Annotated[dict[str, object], Depends(current_farmer)],
+    image: UploadFile = File(...),
+) -> dict[str, object]:
+    """Classify one crop photo in memory/temp storage, then remove the photo."""
+    _ = farmer
+    if image.content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(415, "Upload a JPEG, PNG, or WEBP crop image.")
+    contents = await image.read()
+    if not contents or len(contents) > 8 * 1024 * 1024:
+        raise HTTPException(413, "Crop image must be between 1 byte and 8 MB.")
+    suffix = Path(image.filename or "crop.jpg").suffix.lower()
+    if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+        suffix = ".jpg"
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(prefix="mittimitra-crop-", suffix=suffix, delete=False) as temporary:
+            temporary.write(contents)
+            temporary_path = Path(temporary.name)
+        return {"prediction": predict_crop_disease(temporary_path), "photo_retention": "The crop photo was deleted after this prediction."}
+    except RuntimeError as error:
+        raise HTTPException(503, str(error)) from error
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    finally:
+        if temporary_path:
+            temporary_path.unlink(missing_ok=True)
 
 
 @app.post("/admin/scheme-notifications")
