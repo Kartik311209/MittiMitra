@@ -25,6 +25,13 @@ API_BASE_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
 
 st.set_page_config(page_title="MittiMitra | Soil Intelligence", page_icon="🌱", layout="wide")
 
+if os.getenv("DEMO_MODE") == "1":
+    st.warning(
+        "Private demo: sirf 9000000xxx test mobile numbers use karein. "
+        "OTP screen par dikhega; real naam, phone, ya personal photo upload na karein. "
+        "Demo data server restart par mit sakta hai."
+    )
+
 
 # The component keeps the India outline as a real vector map.  It intentionally
 # uses the local Highcharts map dataset instead of rendering a pasted screenshot.
@@ -65,7 +72,9 @@ INDIA_ACTIVITY_MAP = st.components.v2.component(
             const status = parentElement.querySelector("#map-status");
             if (!target || !data) return;
 
-            const assetBase = `${window.location.protocol}//${window.location.hostname}:8000/assets/maps`;
+            const assetBase = data.asset_base_path
+                ? `${window.location.origin}${data.asset_base_path}`
+                : `${window.location.protocol}//${window.location.hostname}:8000/assets/maps`;
             try {
                 await loadScript(`${assetBase}/highmaps.js`, "mittimitra-highmaps");
                 await loadScript(`${assetBase}/in-all-disputed.js`, "mittimitra-india-disputed-map");
@@ -1302,7 +1311,11 @@ def render_farmer_activity_map() -> None:
         }[language]
         INDIA_ACTIVITY_MAP(
             key="mittimitra_farmer_activity_map",
-            data={"items": localized_items, "status": map_status},
+            data={
+                "items": localized_items,
+                "status": map_status,
+                "asset_base_path": "/api/assets/maps" if API_BASE_URL.endswith("/api") else "",
+            },
             height=650,
         )
     with india_summary_column:

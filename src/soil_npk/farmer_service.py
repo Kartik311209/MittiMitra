@@ -51,6 +51,8 @@ def normalize_phone(phone_number: str) -> str:
         digits = f"91{digits}"
     if len(digits) != 12 or not digits.startswith("91") or digits[2] not in "6789":
         raise ValueError("Enter a valid Indian 10-digit mobile number.")
+    if os.getenv("DEMO_MODE") == "1" and not digits[2:].startswith("9000000"):
+        raise ValueError("Private demo mein sirf 9000000xxx test numbers use karein; real mobile number na daalein.")
     return f"+{digits}"
 
 

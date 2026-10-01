@@ -5,6 +5,8 @@ The static landing page is in [`web/`](web/).
 It is intentionally separate from the farmer portal. The portal needs a
 container host, persistent database/uploads, real SMS OTP, and HTTPS before a
 public launch; local screen OTP is for development only.
+For the complete single-port portal and a password-protected, disposable test
+deployment, see [HOSTING.md](HOSTING.md).
 
 A synthetic-data MVP that estimates Nitrogen (N), Phosphorus (P), and Potassium (K) from a soil image. It is designed so future field images and matching laboratory reports can be used with the same training contract.
 

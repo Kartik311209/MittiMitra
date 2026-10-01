@@ -1,0 +1,28 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/src \
+    NPK_APP_DATA_DIR=/app/persistent/app_data \
+    NPK_MODEL_PATH=/app/persistent/artifacts/npk_baseline.npz \
+    CROP_DISEASE_MODEL_PATH=/app/persistent/artifacts/crop_disease_baseline.npz \
+    PUBLIC_DEPLOYMENT=1
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY src ./src
+COPY dashboard.py hosted_app.py ./
+COPY assets ./assets
+COPY data/locations ./data/locations
+COPY All_Districtof_India_*.xlsx ./
+COPY All_Sub_Districtof_India_*.xlsx ./
+COPY All_Villagesof_India_*.xlsx ./
+
+RUN python -m soil_npk.generator --output /tmp/npk-synthetic --samples 800 \
+    && python -m soil_npk.training --labels /tmp/npk-synthetic/labels.csv --model /app/bootstrap_artifacts/npk_baseline.npz \
+    && rm -r /tmp/npk-synthetic
+
+EXPOSE 8501
+CMD ["sh", "-c", "exec uvicorn hosted_app:app --host 0.0.0.0 --port ${PORT:-8501}"]
