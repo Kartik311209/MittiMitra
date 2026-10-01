@@ -24,5 +24,7 @@ RUN python -m soil_npk.generator --output /tmp/npk-synthetic --samples 800 \
     && python -m soil_npk.training --labels /tmp/npk-synthetic/labels.csv --model /app/bootstrap_artifacts/npk_baseline.npz \
     && rm -r /tmp/npk-synthetic
 
+RUN NPK_APP_DATA_DIR=/app/bootstrap_artifacts python -c "from soil_npk.locations import initialise_locations; initialise_locations()"
+
 EXPOSE 8501
 CMD ["sh", "-c", "exec uvicorn hosted_app:app --host 0.0.0.0 --port ${PORT:-8501}"]

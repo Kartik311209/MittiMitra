@@ -30,8 +30,9 @@ The browser's password prompt uses username `demo` and the configured
 
 For a persistent host, mount one volume at `/app/persistent`. That directory
 contains the SQLite database, uploads, and mutable model artifacts. The
-location directory is imported from the tracked LGD workbooks on first boot,
-which can take a few minutes. Subsequent starts reuse the persistent database.
+Docker build bundles a location-only SQLite database from the tracked LGD
+workbooks, so an empty volume or ephemeral Free service can restore the
+village directory without re-reading the large workbooks at every cold start.
 
 ## Real farmer deployment
 

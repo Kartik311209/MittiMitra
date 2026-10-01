@@ -28,7 +28,7 @@ os.environ.setdefault("BACKEND_URL", f"http://127.0.0.1:{port}/api")
 
 from soil_npk.api import app as farmer_api  # noqa: E402
 from soil_npk.farmer_service import MODEL_PATH, initialise_database  # noqa: E402
-from soil_npk.locations import initialise_locations  # noqa: E402
+from soil_npk.locations import DATABASE_PATH, initialise_locations  # noqa: E402
 
 
 class DemoAccessMiddleware:
@@ -113,6 +113,12 @@ async def lifespan(_app):
             raise RuntimeError(f"NPK baseline is missing: {bootstrap}")
         MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(bootstrap, MODEL_PATH)
+
+    if not DATABASE_PATH.exists():
+        bootstrap_database = Path(os.getenv("NPK_BOOTSTRAP_DATABASE_PATH", "bootstrap_artifacts/terranpk.db"))
+        if bootstrap_database.is_file():
+            DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(bootstrap_database, DATABASE_PATH)
 
     initialise_database()
     initialise_locations()
