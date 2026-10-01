@@ -1,6 +1,7 @@
 # Soil NPK Analysis Using AI & ML
 
-Public website: the static Vercel-ready landing page is in [`web/`](web/).
+Public preview: [MittiMitra on Vercel](https://mittimitra-web.vercel.app/).
+The static landing page is in [`web/`](web/).
 It is intentionally separate from the farmer portal. The portal needs a
 container host, persistent database/uploads, real SMS OTP, and HTTPS before a
 public launch; local screen OTP is for development only.

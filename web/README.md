@@ -3,6 +3,8 @@
 This folder is a static public preview, separate from the Streamlit dashboard
 and FastAPI backend. It does not accept farmer details or offer OTP login.
 
+Live preview: https://mittimitra-web.vercel.app/
+
 To publish it on Vercel, import the GitHub repository, select `web` as the
 project's Root Directory, and use the `Other` framework preset. No build
 command or environment variables are needed. Keep the dashboard/API on a
