@@ -28,6 +28,7 @@ os.environ.setdefault("BACKEND_URL", f"http://127.0.0.1:{port}/api")
 
 from soil_npk.api import app as farmer_api  # noqa: E402
 from soil_npk.farmer_service import MODEL_PATH, initialise_database  # noqa: E402
+from soil_npk.hosting_auth import internal_demo_token  # noqa: E402
 from soil_npk.locations import DATABASE_PATH, initialise_locations  # noqa: E402
 
 
@@ -65,7 +66,17 @@ class DemoAccessMiddleware:
         authorization = headers.get(b"authorization", b"").decode("latin-1")
         cookie_valid = self._valid_cookie(cookie)
         basic_valid = self._valid_basic(authorization)
-        if not (cookie_valid or basic_valid):
+        client = scope.get("client") or ("", 0)
+        internal_valid = (
+            scope["type"] == "http"
+            and scope.get("path", "").startswith("/api/")
+            and client[0] in {"127.0.0.1", "::1"}
+            and hmac.compare_digest(
+                headers.get(b"x-mittimitra-internal-token", b"").decode("latin-1"),
+                internal_demo_token(self.password),
+            )
+        )
+        if not (cookie_valid or basic_valid or internal_valid):
             if scope["type"] == "websocket":
                 await send({"type": "websocket.close", "code": 4401})
             else:

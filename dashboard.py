@@ -19,6 +19,7 @@ import streamlit as st
 import requests
 
 from soil_npk.state_portals import STATE_EXTRA_RESOURCES, STATE_PORTALS
+from soil_npk.hosting_auth import internal_demo_token
 
 
 API_BASE_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
@@ -372,10 +373,12 @@ def instant_result_text(key: str) -> str:
 
 def api_call(method: str, path: str, **kwargs: object) -> tuple[dict[str, object] | None, str | None]:
     """Call the persistent FastAPI backend and return a user-friendly error."""
-    # The private demo's Basic gate also protects /api. Calls made by the
-    # Streamlit server itself need the same credential, but only over loopback.
+    # The private demo also gates /api. Use a separate loopback-only token so
+    # farmer session and admin headers remain untouched.
     if os.getenv("DEMO_MODE") == "1" and API_BASE_URL.startswith("http://127.0.0.1:"):
-        kwargs.setdefault("auth", ("demo", os.getenv("DEMO_ACCESS_PASSWORD", "")))
+        headers = dict(kwargs.get("headers") or {})
+        headers["X-MittiMitra-Internal-Token"] = internal_demo_token(os.getenv("DEMO_ACCESS_PASSWORD", ""))
+        kwargs["headers"] = headers
     try:
         response = requests.request(method, f"{API_BASE_URL}{path}", timeout=30, **kwargs)
     except requests.RequestException:
