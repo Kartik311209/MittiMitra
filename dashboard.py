@@ -579,6 +579,26 @@ def inject_css() -> None:
         @media (max-width:1100px) {.block-container {max-width:1180px;} .scheme-poster {min-height:145px;padding:.72rem;}.scheme-poster-copy {display:none;}.login-hero {min-height:560px;} div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .login-panel) {min-height:470px;padding:.7rem;}}
         .how-heading {margin:.25rem 0 .75rem;color:#1e412e;font-size:1.32rem;}.step-card {position:relative;height:100%;min-height:162px;padding:1rem 1rem .95rem;border:1px solid #dce9de;border-radius:16px;background:#fff;box-shadow:0 8px 22px rgba(34,79,52,.055);}.step-number {position:absolute;right:.8rem;top:.7rem;display:grid;place-items:center;width:23px;height:23px;border-radius:50%;background:#e7f5e8;color:#267c45;font:700 .72rem 'DM Mono',monospace;}.step-icon {font-size:1.7rem;margin:.05rem 0 .4rem;}.step-title {color:#214a32;font-weight:800;font-size:.95rem;line-height:1.35;max-width:85%;}.step-copy {margin-top:.38rem;color:#657a6b;font-size:.79rem;line-height:1.48;}.help-note {margin:.75rem 0 1.15rem;padding:.68rem .85rem;border-radius:10px;border:1px solid #efdca3;background:#fffaf0;color:#6d5b2e;font-size:.82rem;line-height:1.48;}
         .st-key-kisan_mitra_floating {position:fixed!important;z-index:1000;right:1.15rem;bottom:1.15rem;width:min(390px,calc(100vw - 2.3rem));padding:0!important;overflow:hidden;border:1px solid rgba(71,153,88,.35)!important;border-radius:22px!important;background:linear-gradient(145deg,rgba(255,255,255,.99),rgba(235,250,238,.98))!important;box-shadow:0 24px 62px rgba(19,70,38,.28),inset 0 1px 0 rgba(255,255,255,.95)!important;backdrop-filter:blur(18px);}.st-key-kisan_mitra_floating .ai-float-hero {margin:-1rem -1rem .15rem;padding:1rem 1.05rem .9rem;background:radial-gradient(circle at 88% -30%,rgba(251,214,112,.8),transparent 48%),linear-gradient(132deg,#123f2b,#1d8751 62%,#4db476);color:#fff;}.ai-float-title-row {display:flex;align-items:center;gap:.65rem;}.ai-float-avatar {display:grid;place-items:center;width:38px;height:38px;border-radius:14px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.28);font-size:1.25rem;box-shadow:inset 0 1px 0 rgba(255,255,255,.22);}.ai-float-title {font-size:1rem;font-weight:800;line-height:1.1;}.ai-float-status {margin-top:.17rem;font-size:.66rem;color:#cef6d7;}.ai-float-status i {display:inline-block;width:6px;height:6px;margin-right:.26rem;border-radius:50%;background:#e5f77d;box-shadow:0 0 0 4px rgba(229,247,125,.15);}.ai-float-hero p {margin:.72rem 0 0;color:#e6f8eb;font-size:.76rem;line-height:1.42;}.st-key-kisan_mitra_floating .ai-chat-history {margin:.15rem 0 .35rem;padding:.1rem .25rem;border:1px solid #d8eadb;border-radius:14px;background:rgba(255,255,255,.62);}.st-key-kisan_mitra_floating div[data-testid="stChatMessage"] {padding:.28rem .12rem!important;gap:.38rem!important;}.st-key-kisan_mitra_floating div[data-testid="stTextArea"] textarea {min-height:60px!important;font-size:.82rem!important;}.st-key-kisan_mitra_floating .stButton>button {font-size:.79rem;padding:.43rem .58rem;}.st-key-kisan_mitra_floating [data-testid="stPills"] {margin-top:.1rem;}.st-key-lab_lease_area {padding:1rem;border:1px solid #dbeadf;border-radius:20px;background:linear-gradient(145deg,#ffffff,#f1fbf2);box-shadow:0 14px 32px rgba(34,79,52,.08);}.st-key-profile_corner {margin-left:auto;} @media (max-width:800px) {.st-key-kisan_mitra_floating {position:relative!important;right:auto;bottom:auto;width:stretch;margin-top:1rem;}.st-key-kisan_mitra_floating .ai-float-hero {margin:-1rem -1rem .25rem;}}
+        .st-key-kisan_mitra_floating {width:min(420px,calc(100vw - 1.5rem));max-height:min(680px,calc(100vh - 1.5rem));padding:.8rem!important;overflow-y:auto!important;border-color:#b9ddc1!important;background:#fff!important;box-shadow:0 20px 60px rgba(13,62,36,.2)!important;}
+        .st-key-kisan_mitra_floating .ai-float-hero {position:relative;margin:0 0 .25rem;padding:.75rem .8rem .85rem;overflow:hidden;border-radius:18px;background:linear-gradient(130deg,#16482e,#247a49 65%,#4aa765);}
+        .mitarr-stage {display:flex;align-items:flex-end;gap:.35rem;min-height:115px;}
+        .mitarr-figure {width:104px;height:114px;flex:none;transform-origin:bottom center;animation:mitarr-enter .8s cubic-bezier(.2,.8,.2,1) both;filter:drop-shadow(0 8px 6px rgba(0,0,0,.16));}
+        .mitarr-hand {transform-origin:96px 100px;animation:mitarr-wave 1.15s ease-in-out .8s 2;}
+        .mitarr-bubble {position:relative;flex:1;align-self:center;padding:.62rem .72rem;border-radius:15px 15px 15px 4px;background:#fffdf3;color:#20472f;font-size:.79rem;font-weight:700;line-height:1.4;box-shadow:0 7px 18px rgba(12,46,26,.13);animation:mitarr-speak .55s ease-out .65s both;}
+        .mitarr-bubble:after {content:'';position:absolute;left:-8px;bottom:12px;border-right:9px solid #fffdf3;border-top:7px solid transparent;border-bottom:7px solid transparent;}
+        .mitarr-name {display:block;margin-bottom:.22rem;color:#16804c;font-size:.68rem;font-weight:800;letter-spacing:.03em;}
+        .ai-float-title-row {margin-bottom:.3rem;}.ai-float-title {font-size:1rem;}.ai-float-status {color:#d8f4df;}
+        .st-key-kisan_mitra_floating .st-key-ai_chat_history {padding:.45rem!important;border:1px solid #e4eee5;border-radius:15px;background:#f8fbf7;}
+        .st-key-kisan_mitra_floating div[data-testid="stChatMessage"] {border-radius:12px;}
+        .st-key-kisan_mitra_floating [data-testid="stChatInput"] {border-radius:15px;}
+        .st-key-kisan_mitra_floating [data-testid="stChatInput"] textarea {min-height:46px!important;font-size:.84rem!important;}
+        .st-key-kisan_mitra_floating [data-testid="stPills"] {margin:.05rem 0 .2rem;}
+        .st-key-kisan_mitra_floating [data-testid="stExpander"] {border-color:#e2ede3;}
+        @keyframes mitarr-enter {from {opacity:0;transform:translateX(85px) rotate(8deg)} to {opacity:1;transform:translateX(0) rotate(0)}}
+        @keyframes mitarr-wave {0%,100% {transform:rotate(0)} 35%,75% {transform:rotate(-19deg)}}
+        @keyframes mitarr-speak {from {opacity:0;transform:translateY(8px) scale(.96)} to {opacity:1;transform:translateY(0) scale(1)}}
+        @media (prefers-reduced-motion:reduce) {.mitarr-figure,.mitarr-hand,.mitarr-bubble {animation:none!important;}}
+        @media (max-width:800px) {.st-key-kisan_mitra_floating {width:100%;max-height:none;}.st-key-kisan_mitra_floating .ai-float-hero {margin:0 0 .25rem;}}
         </style>
         """,
         unsafe_allow_html=True,
@@ -914,6 +934,7 @@ def render_kisan_mitra_floating() -> None:
     if not token:
         return
     language = language_mode()
+    chosen_language = selected_language()
     labels = {
         "Hindi": {
             "title": "किसान मित्र AI", "copy": "खेती, मौसम या पशु-चारा के बारे में पूछें।", "topic": "विषय", "general": "खेती / मिट्टी", "livestock": "भैंस / पशु चारा", "weather": "फसल + स्थानीय मौसम", "question": "अपना सवाल", "placeholder": "जैसे: दूध बढ़ाने के लिए भैंस को कौन-सा संतुलित चारा दें?", "send": "AI से पूछें", "voice": "आवाज़ से पूछें", "speak": "AI का जवाब आवाज़ में सुनें", "consent": "मौसम सलाह के लिए मेरा ज़िला और राज्य उपयोग करें", "warning": "बीमार पशु या आपात स्थिति में पशु चिकित्सक से तुरंत संपर्क करें।",
@@ -924,6 +945,18 @@ def render_kisan_mitra_floating() -> None:
         "English": {
             "title": "Kisan Mitra AI", "copy": "Ask about farming, weather or animal feed.", "topic": "Topic", "general": "Farming / soil", "livestock": "Buffalo / animal feed", "weather": "Crop + local weather", "question": "Your question", "placeholder": "For example: What balanced feed should I give my buffalo to support milk production?", "send": "Ask AI", "voice": "Ask by voice", "speak": "Play the AI answer aloud", "consent": "Use my district and state for weather advice", "warning": "For a sick animal or emergency, contact a qualified veterinarian immediately.",
         },
+    }[language]
+    greeting = {
+        "Hindi": "नमस्ते! मैं मिटार हूँ। आज मैं आपकी कैसे मदद करूँ?",
+        "Hinglish": "Namaste! Main Mitarr hoon. Aaj main aapki kaise madad karun?",
+        "English": "Hello! I'm Mitarr. How can I help you today?",
+    }[language]
+    if chosen_language in LANGUAGE_CODES:
+        greeting = translated_ui_text("Hello! I am Mitarr. How can I help you today?")
+    panel_copy = {
+        "Hindi": {"ready": "आपका खेती साथी", "quick": "इन सवालों से शुरू करें", "empty": "नीचे लिखें या माइक से बोलें।", "settings": "जवाब की सेटिंग", "listen": "मिटार की आवाज़ सुनें", "thinking": "मिटार जवाब तैयार कर रहा है...", "hearing": "आपकी आवाज़ समझी जा रही है...", "voice_hint": "माइक दबाएँ, बोलें और रिकॉर्डिंग भेजें।"},
+        "Hinglish": {"ready": "Aapka kheti saathi", "quick": "In sawaalon se shuru karein", "empty": "Neeche likhein ya mic se boliye.", "settings": "Jawab ki settings", "listen": "Mitarr ki awaaz sunein", "thinking": "Mitarr jawab taiyar kar raha hai...", "hearing": "Aapki awaaz samajhi ja rahi hai...", "voice_hint": "Mic dabayein, boliye aur recording bhejein."},
+        "English": {"ready": "Your farming companion", "quick": "Start with a question", "empty": "Type below or use the microphone.", "settings": "Reply settings", "listen": "Hear Mitarr", "thinking": "Mitarr is preparing a reply...", "hearing": "Understanding your recording...", "voice_hint": "Tap the mic, speak, then send the recording."},
     }[language]
     messages_key = "kisan_mitra_ai_messages"
     st.session_state.setdefault(messages_key, [])
@@ -945,19 +978,48 @@ def render_kisan_mitra_floating() -> None:
             "After rainfall": "What should I inspect and do first in my field after rainfall?",
         },
     }[language]
+    if chosen_language in LANGUAGE_CODES:
+        labels["placeholder"] = translated_ui_text(labels["placeholder"])
 
-    with st.container(border=True, key="kisan_mitra_floating", height=550, autoscroll=True, gap="xsmall"):
-        farmer_name = escape(str(st.session_state.get("user_name", "किसान भाई")))
-        st.markdown(
-            f"""<section class='ai-float-hero'><div class='ai-float-title-row'><div class='ai-float-avatar'>🌾</div><div><div class='ai-float-title'>{labels['title']}</div><div class='ai-float-status'><i></i>AI सहायक तैयार है</div></div></div><p>नमस्ते {farmer_name}! आज खेती, मौसम या पशु-चारा में किस बात की मदद चाहिए?</p></section>""",
-            unsafe_allow_html=True,
+    mascot_svg = """<svg class='mitarr-figure' viewBox='0 0 120 130' role='img' aria-label='Mitarr farmer mascot' xmlns='http://www.w3.org/2000/svg'>
+      <ellipse cx='59' cy='124' rx='46' ry='5' fill='#113c2a' opacity='.25'/>
+      <path d='M19 118 Q24 83 48 81 L73 81 Q99 85 105 118Z' fill='#f2f5df'/>
+      <path d='M28 111 Q40 89 53 88 L72 88 Q91 93 97 114Z' fill='#e6eee1'/>
+      <path d='M56 77 L74 77 L73 89 Q65 97 55 87Z' fill='#b9794c'/>
+      <path d='M41 45 Q43 25 61 22 Q83 23 87 48 L83 70 Q77 83 64 85 Q49 82 44 68Z' fill='#cc8b5d'/>
+      <path d='M42 49 Q34 48 34 60 Q36 67 43 65M86 50 Q95 48 95 60 Q92 66 85 65' fill='#c38355'/>
+      <path d='M41 40 Q43 22 61 21 Q86 20 90 45 Q66 48 41 40Z' fill='#efb344'/>
+      <path d='M37 38 Q48 15 73 18 Q91 23 91 40 Q62 35 37 42Z' fill='#f9c65e'/>
+      <path d='M48 28 Q68 24 88 34M42 36 Q62 31 89 39' fill='none' stroke='#d7932f' stroke-width='3' stroke-linecap='round'/>
+      <path d='M53 54 Q57 51 61 54M72 54 Q76 51 80 54' fill='none' stroke='#513626' stroke-width='2.5' stroke-linecap='round'/>
+      <circle cx='58' cy='56' r='1.4' fill='#27261f'/><circle cx='76' cy='56' r='1.4' fill='#27261f'/>
+      <path d='M59 70 Q66 75 74 69M64 66 Q67 68 70 66' fill='none' stroke='#75472f' stroke-width='2' stroke-linecap='round'/>
+      <path d='M58 63 Q61 59 66 62 Q68 59 74 63 Q71 68 66 65 Q61 68 58 63Z' fill='#54392b'/>
+      <path d='M50 87 Q64 101 78 87' fill='none' stroke='#2b8b57' stroke-width='5'/>
+      <g class='mitarr-hand'><path d='M95 101 Q111 88 109 68' fill='none' stroke='#e9eee1' stroke-width='13' stroke-linecap='round'/><path d='M108 69 Q105 54 108 47 M109 67 Q114 54 117 52 M109 69 Q119 62 120 61' fill='none' stroke='#c98759' stroke-width='6' stroke-linecap='round'/></g>
+    </svg>"""
+
+    with st.container(border=True, key="kisan_mitra_floating", gap="xsmall"):
+        st.html(
+            f"""<section class='ai-float-hero' aria-label='{escape(labels['title'])}'>
+            <div class='ai-float-title-row'><div><div class='ai-float-title'>{escape(labels['title'])}</div><div class='ai-float-status'><i></i>{escape(panel_copy['ready'])}</div></div></div>
+            <div class='mitarr-stage'>{mascot_svg}<div class='mitarr-bubble'><span class='mitarr-name'>MITARR</span>{escape(greeting)}</div></div>
+            </section>"""
         )
-        st.caption(labels["warning"])
+        if st.button(panel_copy["listen"], icon=":material/volume_up:", key="floating_ai_greeting_voice", width="content"):
+            speech, speech_error = api_call("POST", "/assistant/speak", headers={"X-Session-Token": token}, json={"text": greeting})
+            if speech_error or not speech or not speech.get("audio_base64"):
+                st.error(speech_error or "Voice playback is unavailable right now.")
+            else:
+                st.session_state["floating_ai_greeting_audio"] = str(speech["audio_base64"])
+        if greeting_audio := st.session_state.get("floating_ai_greeting_audio"):
+            st.audio(base64.b64decode(str(greeting_audio)), autoplay=True)
+            st.session_state.pop("floating_ai_greeting_audio", None)
         quick_pick = None
         if not messages:
-            st.caption("झटपट शुरू करें")
+            st.caption(panel_copy["quick"])
             quick_pick = st.pills("Quick questions", list(quick_prompts), key="floating_ai_quick_prompts", label_visibility="collapsed", width="stretch")
-        with st.container(key="ai_chat_history", height=145, border=False, autoscroll=True, gap="xxsmall"):
+        with st.container(key="ai_chat_history", height=165, border=False, autoscroll=True, gap="xxsmall"):
             if messages:
                 for message in messages[-4:]:
                     with st.chat_message(str(message["role"]), avatar=":material/smart_toy:" if message["role"] == "assistant" else ":material/agriculture:"):
@@ -965,12 +1027,14 @@ def render_kisan_mitra_floating() -> None:
                         if message.get("audio"):
                             st.audio(base64.b64decode(str(message["audio"])), format=str(message.get("mime_type", "audio/wav")))
             else:
-                st.caption("अपना सवाल लिखें या ऊपर दिया गया कोई सुझाव चुनें।")
+                st.caption(panel_copy["empty"])
         topic_labels = {labels["general"]: "general", labels["livestock"]: "livestock", labels["weather"]: "crop_weather"}
         selected_label = st.selectbox(labels["topic"], list(topic_labels), key="floating_ai_topic")
         request_type = topic_labels[selected_label]
         weather_ok = request_type != "crop_weather" or st.checkbox(labels["consent"], key="floating_ai_weather_consent")
-        speak_reply = st.checkbox(labels["speak"], value=True, key="floating_ai_speak_reply")
+        with st.expander(panel_copy["settings"]):
+            speak_reply = st.checkbox(labels["speak"], value=False, key="floating_ai_speak_reply")
+            st.caption(labels["warning"])
 
         def ask(question: str) -> None:
             clean_question = question.strip()
@@ -981,8 +1045,8 @@ def render_kisan_mitra_floating() -> None:
                 st.error(labels["consent"])
                 return
             messages.append({"role": "user", "content": clean_question})
-            with st.spinner("Kisan Mitra AI soch raha hai..."):
-                advice, advice_error = api_call("POST", "/assistant/advice", headers={"X-Session-Token": token}, json={"question": clean_question, "language": language, "request_type": request_type})
+            with st.spinner(panel_copy["thinking"]):
+                advice, advice_error = api_call("POST", "/assistant/advice", headers={"X-Session-Token": token}, json={"question": clean_question, "language": chosen_language, "request_type": request_type})
             if advice_error or not advice:
                 messages.append({"role": "assistant", "content": advice_error or "AI answer unavailable."})
             else:
@@ -998,20 +1062,20 @@ def render_kisan_mitra_floating() -> None:
 
         if quick_pick:
             ask(quick_prompts[str(quick_pick)])
-        with st.form("floating_ai_text_form", border=False):
-            typed_question = st.text_area(labels["question"], placeholder=labels["placeholder"], max_chars=700, key="floating_ai_text")
-            submitted = st.form_submit_button(labels["send"], icon=":material/send:", width="stretch")
-        if submitted:
-            ask(typed_question)
-        audio_question = st.audio_input(labels["voice"], key="floating_ai_audio")
-        if st.button(labels["voice"], icon=":material/mic:", width="stretch", key="floating_ai_voice_send", disabled=audio_question is None):
-            if audio_question is not None:
-                with st.spinner("Aapki awaaz samajh raha hai..."):
-                    transcript, transcript_error = api_call("POST", "/assistant/transcribe", headers={"X-Session-Token": token}, data={"language": language}, files={"audio": (audio_question.name, audio_question.getvalue(), audio_question.type)})
+        chat_submission = st.chat_input(labels["placeholder"], accept_audio=True, max_chars=700, submit_mode="disable", key="floating_ai_chat_input")
+        st.caption(panel_copy["voice_hint"])
+        if chat_submission:
+            question = str(chat_submission.text or "").strip()
+            if chat_submission.audio:
+                recorded = chat_submission.audio
+                with st.spinner(panel_copy["hearing"]):
+                    transcript, transcript_error = api_call("POST", "/assistant/transcribe", headers={"X-Session-Token": token}, data={"language": chosen_language}, files={"audio": (recorded.name, recorded.getvalue(), recorded.type)})
                 if transcript_error or not transcript:
                     st.error(transcript_error or "Voice transcription unavailable.")
                 else:
-                    ask(str(transcript.get("transcript", "")))
+                    question = " ".join(part for part in (question, str(transcript.get("transcript", ""))) if part)
+            if question:
+                ask(question)
 
 
 def render_account_and_lab_tools() -> None:

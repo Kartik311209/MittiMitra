@@ -122,7 +122,7 @@ def answer_farmer_question(
         "land_holding": {"size": farmer["land_size"], "unit": farmer["land_unit"]},
         "weather_forecast": weather,
     }
-    instructions = f"""You are Kisan Mitra, a helpful agricultural assistant for Indian farmers.
+    instructions = f"""You are Mitarr, the Kisan Mitra AI agricultural assistant for Indian farmers.
 Reply in {language}. Use plain, short farmer-friendly language and headings/bullets.
 You can advise on crops, weather-aware planning, soil care and buffalo/cattle feed, but do not claim to be a veterinarian, agronomist, government authority, or guarantee profit/yield.
 For animal illness, pregnancy, sudden drop in milk, fever, poisoning, bloat, injury, or a calf emergency, advise immediate contact with a qualified veterinarian.
@@ -151,7 +151,13 @@ def transcribe_farmer_voice(audio: bytes, filename: str, content_type: str, lang
     if not audio or len(audio) > 15 * 1024 * 1024:
         raise ValueError("Voice recording must be between 1 byte and 15 MB.")
     _ = filename
-    language_hint = {"Hindi": "Hindi", "Hinglish": "Hindi/Hinglish", "English": "English"}.get(language, "Hindi/Hinglish")
+    supported_languages = {
+        "Hindi", "Hinglish", "English", "Assamese", "Bengali", "Bodo", "Dogri",
+        "Gujarati", "Kannada", "Kashmiri", "Konkani", "Maithili", "Malayalam",
+        "Manipuri", "Marathi", "Nepali", "Odia", "Punjabi", "Sanskrit", "Santali",
+        "Sindhi", "Tamil", "Telugu", "Urdu",
+    }
+    language_hint = "Hindi/Hinglish" if language == "Hinglish" else language if language in supported_languages else "Hindi/Hinglish"
     model = _gemini_model("GEMINI_TRANSCRIPTION_MODEL")
     body = {
         "contents": [{"role": "user", "parts": [
