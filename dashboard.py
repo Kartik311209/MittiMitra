@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import sys
 from datetime import date
 from html import escape
@@ -371,14 +372,36 @@ def instant_result_text(key: str) -> str:
 
 def api_call(method: str, path: str, **kwargs: object) -> tuple[dict[str, object] | None, str | None]:
     """Call the persistent FastAPI backend and return a user-friendly error."""
+    # The private demo's Basic gate also protects /api. Calls made by the
+    # Streamlit server itself need the same credential, but only over loopback.
+    if os.getenv("DEMO_MODE") == "1" and API_BASE_URL.startswith("http://127.0.0.1:"):
+        kwargs.setdefault("auth", ("demo", os.getenv("DEMO_ACCESS_PASSWORD", "")))
     try:
         response = requests.request(method, f"{API_BASE_URL}{path}", timeout=30, **kwargs)
-        if response.ok:
-            return response.json(), None
-        detail = response.json().get("detail", response.text)
-        return None, str(detail)
     except requests.RequestException:
+        if os.getenv("PUBLIC_DEPLOYMENT") == "1":
+            return None, "Server abhi respond nahi kar raha. Kripya kuch der baad phir try karein."
         return None, "Backend se connection nahi ho paaya. Docker services ya FastAPI server chalu kijiye."
+    try:
+        payload = response.json()
+    except ValueError:
+        return None, f"Server ne HTTP {response.status_code} error diya. Kripya phir try karein."
+    if response.ok:
+        return payload, None
+    detail = payload.get("detail", response.text) if isinstance(payload, dict) else response.text
+    return None, str(detail)
+
+
+def demo_phone_error(phone_number: str) -> str | None:
+    """Keep real phone numbers out of the disposable, on-screen-OTP demo."""
+    if os.getenv("DEMO_MODE") != "1":
+        return None
+    digits = re.sub(r"\D", "", phone_number)
+    if digits.startswith("91") and len(digits) == 12:
+        digits = digits[2:]
+    if re.fullmatch(r"9000000\d{3}", digits):
+        return None
+    return "Private demo ke liye 9000000xxx test number daalein, jaise 9000000001. Real mobile number use na karein."
 
 
 def location_options(path: str, **params: str) -> list[str]:
@@ -607,6 +630,9 @@ def render_new_farmer_registration() -> None:
     if any(not profile[key] for key in required_profile_fields) or any(value in placeholders for value in profile.values() if isinstance(value, str)):
         st.error(registration_text("required"))
         return
+    if phone_error := demo_phone_error(profile["phone_number"]):
+        st.error(phone_error)
+        return
     response, error = api_call("POST", "/auth/request-otp", json={"phone_number": profile["phone_number"]})
     if error:
         st.error(error)
@@ -636,14 +662,17 @@ def login_screen() -> None:
                 st.caption(registration_text("returning_intro"))
                 returning_phone = st.text_input(registration_text("phone"), placeholder=registration_text("phone_hint"), key="returning_phone")
                 if st.button(registration_text("returning_send"), use_container_width=True, key="returning_otp_request"):
-                    response, error = api_call("POST", "/auth/request-otp", json={"phone_number": returning_phone.strip()})
-                    if error:
-                        st.error(error)
-                    elif response:
-                        st.session_state.pending_returning_phone = returning_phone.strip()
-                        st.session_state.pending_otp = response.get("otp")
-                        st.session_state.login_step = "returning_otp"
-                        st.rerun()
+                    if phone_error := demo_phone_error(returning_phone):
+                        st.error(phone_error)
+                    else:
+                        response, error = api_call("POST", "/auth/request-otp", json={"phone_number": returning_phone.strip()})
+                        if error:
+                            st.error(error)
+                        elif response:
+                            st.session_state.pending_returning_phone = returning_phone.strip()
+                            st.session_state.pending_otp = response.get("otp")
+                            st.session_state.login_step = "returning_otp"
+                            st.rerun()
                 if st.button(registration_text("new_registration"), use_container_width=True, key="open_registration"):
                     st.session_state.show_registration = True
                     st.rerun()
