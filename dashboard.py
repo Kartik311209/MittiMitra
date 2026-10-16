@@ -121,13 +121,7 @@ MITARR_COMPOSER = st.components.v2.component(
     """,
 )
 
-if os.getenv("DEMO_MODE") == "1":
-    st.warning(
-        "Private demo: sirf 9000000xxx test mobile numbers use karein. "
-        "OTP screen par dikhega; real naam, phone, ya personal photo upload na karein. "
-        "Demo data server restart par mit sakta hai."
-    )
-elif os.getenv("PUBLIC_SCREEN_OTP_DEMO") == "1":
+if os.getenv("PUBLIC_SCREEN_OTP_DEMO") == "1":
     st.warning(
         "Public prototype: OTP screen par dikhaya ja raha hai, SMS nahi bheja ja raha. "
         "Yeh real identity verification nahi hai; launch se pehle real SMS OTP configure karein."
@@ -496,15 +490,8 @@ def api_call(method: str, path: str, **kwargs: object) -> tuple[dict[str, object
 
 
 def demo_phone_error(phone_number: str) -> str | None:
-    """Keep real phone numbers out of the disposable, on-screen-OTP demo."""
-    if os.getenv("DEMO_MODE") != "1":
-        return None
-    digits = re.sub(r"\D", "", phone_number)
-    if digits.startswith("91") and len(digits) == 12:
-        digits = digits[2:]
-    if re.fullmatch(r"9000000\d{3}", digits):
-        return None
-    return "Private demo ke liye 9000000xxx test number daalein, jaise 9000000001. Real mobile number use na karein."
+    """Phone number validation — no demo restrictions."""
+    return None
 
 
 def location_options(path: str, **params: str) -> list[str]:
