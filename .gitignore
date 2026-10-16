@@ -1,7 +1,10 @@
 __pycache__/
 *.py[cod]
 .venv/
-artifacts/
+artifacts/*
+!artifacts/crop_disease_mobilenetv3.onnx
+!artifacts/crop_disease_mobilenetv3.onnx.data
+!artifacts/crop_disease_mobilenetv3.json
 data/synthetic/
 data/real/
 data/crop_disease/*

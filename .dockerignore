@@ -6,7 +6,10 @@ data/app_data/
 data/crop_disease/
 data/real/
 data/synthetic/
-artifacts/
+artifacts/*
+!artifacts/crop_disease_mobilenetv3.onnx
+!artifacts/crop_disease_mobilenetv3.onnx.data
+!artifacts/crop_disease_mobilenetv3.json
 output/
 tmp/
 logs/

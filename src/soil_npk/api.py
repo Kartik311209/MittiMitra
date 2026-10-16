@@ -5,11 +5,14 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from pathlib import Path
+from threading import Lock
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -67,6 +70,7 @@ from .assistant_service import (
     AssistantConfigurationError,
     AssistantProviderError,
     answer_farmer_question,
+    scheme_directory,
     synthesize_assistant_voice,
     transcribe_farmer_voice,
 )
@@ -171,6 +175,23 @@ class AssistantQuestion(BaseModel):
     question: str = Field(min_length=2, max_length=1200)
     language: str = Field(default="Hindi", max_length=40)
     request_type: str = Field(default="general", pattern=r"^(general|livestock|crop_weather)$")
+    weather_consent: bool = False
+
+
+_assistant_rate_lock = Lock()
+_assistant_calls: dict[str, deque[float]] = defaultdict(deque)
+
+
+def _check_assistant_rate(farmer_id: str) -> None:
+    """Limit authenticated chat calls per farmer without logging phone or IP."""
+    now = time.monotonic()
+    with _assistant_rate_lock:
+        calls = _assistant_calls[farmer_id]
+        while calls and now - calls[0] >= 600:
+            calls.popleft()
+        if len(calls) >= 30:
+            raise HTTPException(429, "Too many AI questions. Please try again in a few minutes.")
+        calls.append(now)
 
 
 class AssistantSpeech(BaseModel):
@@ -363,12 +384,25 @@ def kisan_mitra_advice(
     farmer: Annotated[dict[str, object], Depends(current_farmer)],
 ) -> dict[str, object]:
     """AI guidance. Forecast lookup only happens for an explicit crop-weather request."""
+    if payload.request_type == "crop_weather" and not payload.weather_consent:
+        raise HTTPException(422, "Allow district-level weather lookup before requesting weather advice.")
+    _check_assistant_rate(str(farmer["id"]))
     try:
         return answer_farmer_question(payload.question, farmer, payload.language, payload.request_type)
     except AssistantConfigurationError as error:
         raise HTTPException(503, str(error)) from error
     except AssistantProviderError as error:
         raise HTTPException(502, str(error)) from error
+
+
+@app.get("/assistant/schemes")
+def kisan_mitra_schemes(
+    farmer: Annotated[dict[str, object], Depends(current_farmer)],
+    q: str = Query(default="", max_length=80),
+) -> dict[str, object]:
+    """Ten official starting points; eligibility must be checked on each portal."""
+    _ = farmer
+    return {"schemes": scheme_directory(q), "eligibility_verified": False}
 
 
 @app.post("/assistant/transcribe")

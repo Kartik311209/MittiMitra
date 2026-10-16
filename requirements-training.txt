@@ -1,0 +1,6 @@
+# Local training only. Do not add these heavyweight packages to the web app runtime.
+torch>=2.5
+torchvision>=0.20
+onnx>=1.17
+# Required by the current PyTorch ONNX exporter.
+onnxscript>=0.5

@@ -5,6 +5,11 @@ services:
       sh -c 'if [ ! -f /app/artifacts/npk_baseline.npz ]; then
       cp /app/bootstrap_artifacts/npk_baseline.npz /app/artifacts/npk_baseline.npz;
       fi;
+      if [ ! -f /app/artifacts/crop_disease_mobilenetv3.onnx ]; then
+      cp /app/bootstrap_artifacts/crop_disease_mobilenetv3.onnx /app/artifacts/crop_disease_mobilenetv3.onnx;
+      cp /app/bootstrap_artifacts/crop_disease_mobilenetv3.onnx.data /app/artifacts/crop_disease_mobilenetv3.onnx.data;
+      cp /app/bootstrap_artifacts/crop_disease_mobilenetv3.json /app/artifacts/crop_disease_mobilenetv3.json;
+      fi;
       exec uvicorn soil_npk.api:app --host 0.0.0.0 --port 8000'
     environment:
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
@@ -22,6 +27,8 @@ services:
       NPK_APP_DATA_DIR: /app/data/app_data
       NPK_MODEL_PATH: /app/artifacts/npk_baseline.npz
       CROP_DISEASE_MODEL_PATH: /app/artifacts/crop_disease_baseline.npz
+      CROP_DISEASE_CNN_MODEL_PATH: /app/artifacts/crop_disease_mobilenetv3.onnx
+      CROP_DISEASE_CNN_METADATA_PATH: /app/artifacts/crop_disease_mobilenetv3.json
       CROP_DISEASE_MIN_CONFIDENCE: ${CROP_DISEASE_MIN_CONFIDENCE:-65}
       CORS_ORIGINS: http://localhost:8501
     volumes:

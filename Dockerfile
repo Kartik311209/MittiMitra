@@ -12,6 +12,9 @@ COPY src ./src
 COPY dashboard.py README.md ./
 COPY assets ./assets
 COPY data/locations ./data/locations
+COPY data/kb ./data/kb
+COPY data/schemes.json ./data/schemes.json
+COPY artifacts/crop_disease_mobilenetv3.onnx artifacts/crop_disease_mobilenetv3.onnx.data artifacts/crop_disease_mobilenetv3.json ./bootstrap_artifacts/
 COPY All_Districtof_India_*.xlsx ./
 COPY All_Sub_Districtof_India_*.xlsx ./
 COPY All_Villagesof_India_*.xlsx ./

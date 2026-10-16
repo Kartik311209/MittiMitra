@@ -59,6 +59,23 @@ docker compose up --build
 
 Open `http://localhost:8501`. The API docs are at `http://localhost:8000/docs`.
 
+### Mitarr farmer assistant (adapted to Streamlit + FastAPI)
+
+The assistant is embedded in the logged-in dashboard; it does not replace farmer accounts or the soil tools. It has Hindi/Hinglish/English controls, the portal's additional Indian-language selector, short quick questions, reply copy/listen buttons, browser speech input where supported, a text fallback, a visible Kisan Call Centre link, and a 10-scheme official-link directory. Browser speech is only offered when `SpeechRecognition` is available and permission is given. The API uses the server-side `GEMINI_API_KEY`; never put that key in browser code. On an AI error or an 8-second timeout, it returns a clearly marked safe fallback instead of a blank answer.
+
+The 7 conservative crop notes in `data/kb/` are general decision aids, not a regional sowing calendar or verified pesticide-label database. To add a crop, create `data/kb/<crop>.md` and add its aliases in `src/soil_npk/assistant_service.py`. To add a scheme, edit `data/schemes.json` with a current official link and caveated eligibility; the portal does not decide a farmer's eligibility. This is a small context lookup, **not** vector-search RAG.
+
+Weather is requested only after district/state consent; the 5-day figures come from Open-Meteo and include dates and a source. A short forecast is not a seasonal crop-profit prediction. Mandi prices are **not yet integrated**: the assistant links to the official AGMARKNET portal and will not display an invented or undated price. The current Streamlit chat also does not promise an offline auto-send queue or saved browser history; a reliable offline-first client would require a separately tested front-end component. If you add those later, account for shared-device privacy. The crop-disease photo model remains a separate untrained feature.
+
+Quick test without starting the server:
+
+```powershell
+$env:PYTHONPATH = "$PWD\src"
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+In the portal: log in with a permitted test account, ask a crop question, try the mic where the browser supports speech recognition (otherwise type in the chat bar), tap Listen/Copy on the reply, check the scheme directory, and verify the Kisan Call Centre link. Do not enter personal IDs or real farmer data in a disposable demo.
+
 For local, free testing, set `OTP_DELIVERY_MODE=screen` in `.env`: the short-lived OTP appears only on the local dashboard and no SMS is sent. Never use this mode on a public deployment. Real SMS OTP uses Twilio Verify: set `OTP_DELIVERY_MODE=twilio`, create a Verify Service, put its Account SID, Auth Token and Verify Service SID in `.env`, then restart the API container. Keep `.env` private and serve a public deployment over HTTPS.
 
 Farmers can separately opt in to government-scheme SMS updates and choose small-landholder updates. An opt-in confirmation is sent through the configured Twilio Messaging Service. An admin can publish a verified official update through `POST /admin/scheme-notifications` using the `X-Scheme-Admin-Key` header. The app never labels someone as poor from land size, and it never promises scheme eligibility; each scheme's official rules determine that.

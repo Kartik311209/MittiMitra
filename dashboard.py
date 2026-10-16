@@ -7,10 +7,11 @@ import json
 import os
 import re
 import sys
-from datetime import date
+from datetime import date, datetime
 from html import escape
 from pathlib import Path
 from urllib.parse import quote_plus
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
@@ -27,6 +28,99 @@ API_BASE_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
 
 st.set_page_config(page_title="MittiMitra | Soil Intelligence", page_icon="🌱", layout="wide")
 
+
+MITARR_VOICE_CONTROLS = st.components.v2.component(
+    "mittimitra_voice_controls",
+    html="<div class='mitarr-controls'><button class='mitarr-mic' type='button'></button><button class='mitarr-listen' type='button'></button><button class='mitarr-copy' type='button'></button><span class='mitarr-voice-status' role='status' aria-live='polite'></span></div>",
+    css="""
+      .mitarr-controls{display:flex;align-items:center;gap:6px;min-height:48px;font:600 16px/1.3 system-ui,sans-serif;color:#244532}
+      .mitarr-controls button{min-height:48px;border-radius:11px;border:1px solid #bed8c4;background:#fff;color:#155c35;cursor:pointer;padding:0 12px;font:inherit}
+      .mitarr-controls button:hover{background:#e9f6ec}.mitarr-controls button:focus-visible{outline:3px solid #dc9a1d;outline-offset:2px}
+      .mitarr-controls button:disabled{opacity:.55;cursor:not-allowed}.mitarr-mic{background:#167b42!important;color:white!important;border-color:#167b42!important}
+      .mitarr-voice-status{font-size:12px;line-height:1.3;min-width:0}.mitarr-controls.listening .mitarr-mic{animation:pulse 1s ease-in-out infinite}
+      @keyframes pulse{50%{box-shadow:0 0 0 8px rgba(22,123,66,.15)}}@media(prefers-reduced-motion:reduce){.mitarr-controls.listening .mitarr-mic{animation:none}}
+    """,
+    js="""
+      export default function(component){
+        const root=component.parentElement.querySelector('.mitarr-controls'); if(!root)return;
+        const {data,setTriggerValue}=component;
+        const mic=root.querySelector('.mitarr-mic'),listen=root.querySelector('.mitarr-listen'),copy=root.querySelector('.mitarr-copy'),status=root.querySelector('.mitarr-voice-status');
+        const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+        const code=data.lang||'hi-IN';
+        mic.hidden=!data.mic;listen.hidden=!!data.mic;copy.hidden=!!data.mic||!!data.copyHidden;
+        mic.textContent='🎤 '+(data.micLabel||'बोलें');listen.textContent='🔊 '+(data.listenLabel||'सुनें');copy.textContent='📋 '+(data.copyLabel||'कॉपी');
+        for(const btn of [mic,listen,copy])btn.setAttribute('aria-label',btn.textContent);
+        if(data.mic){
+          if(!SpeechRecognition){mic.hidden=true;status.textContent=data.unsupported||'इस ब्राउज़र में माइक उपलब्ध नहीं है';}
+          else{mic.disabled=false;status.textContent='';mic.onclick=()=>{
+            const recognition=new SpeechRecognition();recognition.lang=code;recognition.interimResults=false;recognition.maxAlternatives=1;
+            recognition.onstart=()=>{root.classList.add('listening');status.textContent=data.listening||'सुन रहा हूँ…'};
+            recognition.onerror=(event)=>{root.classList.remove('listening');status.textContent=event.error==='not-allowed'?(data.denied||'माइक की अनुमति दें'):(data.retry||'दोबारा बोलें')};
+            recognition.onend=()=>root.classList.remove('listening');
+            recognition.onresult=(event)=>{const transcript=event.results[0]?.[0]?.transcript?.trim();if(transcript){status.textContent=transcript;setTriggerValue('transcript',transcript)}};
+            recognition.start();
+          }}
+        }else{
+          listen.disabled=!('speechSynthesis'in window);
+          listen.onclick=()=>{window.speechSynthesis.cancel();const utterance=new SpeechSynthesisUtterance(data.text||'');utterance.lang=code;utterance.rate=.9;
+            const voices=window.speechSynthesis.getVoices();const matchingVoice=voices.find(voice=>voice.lang.toLowerCase()===code.toLowerCase())||voices.find(voice=>voice.lang.toLowerCase().startsWith(code.slice(0,2).toLowerCase()));
+            if(matchingVoice)utterance.voice=matchingVoice;
+            status.textContent=data.speaking||'';utterance.onend=()=>{status.textContent=''};utterance.onerror=()=>{status.textContent=''};
+            window.speechSynthesis.speak(utterance)};
+          copy.onclick=async()=>{try{await navigator.clipboard.writeText(data.text||'');status.textContent=data.copied||'कॉपी हो गया'}catch{status.textContent=data.retry||'दोबारा कोशिश करें'}};
+        }
+      }
+    """,
+)
+
+MITARR_QUICK_CHIPS = st.components.v2.component(
+    "mittimitra_quick_chips",
+    html="<div class='mitarr-chip-strip' role='group'></div>",
+    css="""
+      .mitarr-chip-strip{display:flex;gap:8px;max-width:100%;overflow-x:auto;overscroll-behavior-inline:contain;padding:2px 2px 9px;scrollbar-width:thin}
+      .mitarr-chip-strip button{flex:0 0 auto;min-height:48px;padding:0 14px;border:1px solid #96c9a5;border-radius:999px;background:#eef8ef;color:#124e2e;font:700 16px/1.2 system-ui,sans-serif;cursor:pointer;white-space:nowrap}
+      .mitarr-chip-strip button:hover{background:#d9efdc}.mitarr-chip-strip button:focus-visible{outline:3px solid #d88d17;outline-offset:2px}
+    """,
+    js="""
+      export default function(component){
+        const root=component.parentElement.querySelector('.mitarr-chip-strip');if(!root)return;
+        root.setAttribute('aria-label',component.data.label||'Quick questions');root.replaceChildren();
+        for(const item of component.data.items||[]){const button=document.createElement('button');button.type='button';button.textContent=item.label;button.setAttribute('aria-label',item.label);button.onclick=()=>component.setTriggerValue('choice',{prompt:item.prompt,kind:item.kind||null});root.appendChild(button)}
+      }
+    """,
+)
+
+MITARR_COMPOSER = st.components.v2.component(
+    "mittimitra_chat_composer",
+    html="<div class='mitarr-compose'><div class='mitarr-compose-row'><button class='mitarr-compose-mic' type='button'></button><input class='mitarr-compose-input' type='text' maxlength='700' autocomplete='off' enterkeyhint='send'/><button class='mitarr-compose-send' type='button'></button></div><div class='mitarr-compose-status' role='status' aria-live='polite'></div></div>",
+    css="""
+      .mitarr-compose{width:100%;font:600 16px/1.3 system-ui,sans-serif}.mitarr-compose-row{display:flex;align-items:center;gap:6px;min-width:0}
+      .mitarr-compose input{min-width:0;flex:1;height:52px;box-sizing:border-box;border:1px solid #aac9b2;border-radius:13px;background:#fff;color:#1a1a1a;padding:0 12px;font:400 16px/1.3 system-ui,sans-serif}
+      .mitarr-compose input:focus-visible,.mitarr-compose button:focus-visible{outline:3px solid #d99319;outline-offset:2px}
+      .mitarr-compose button{flex:0 0 50px;width:50px;height:52px;border:0;border-radius:13px;background:#1b7f3b;color:#fff;font:700 23px/1 system-ui,sans-serif;cursor:pointer}
+      .mitarr-compose button:disabled{opacity:.55;cursor:not-allowed}.mitarr-compose-mic.listening{animation:mitarr-pulse 1s ease-in-out infinite}
+      .mitarr-compose-status{font-size:14px;color:#6c4420;min-height:0}.mitarr-compose-status:not(:empty){padding-top:5px}
+      @keyframes mitarr-pulse{50%{box-shadow:0 0 0 8px rgba(27,127,59,.18)}}@media(prefers-reduced-motion:reduce){.mitarr-compose-mic.listening{animation:none}}
+    """,
+    js="""
+      export default function(component){
+        const root=component.parentElement.querySelector('.mitarr-compose');if(!root)return;
+        const input=root.querySelector('input'),mic=root.querySelector('.mitarr-compose-mic'),send=root.querySelector('.mitarr-compose-send'),status=root.querySelector('.mitarr-compose-status');
+        const data=component.data||{};const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+        input.placeholder=data.placeholder||'अपना सवाल लिखें';input.setAttribute('aria-label',data.inputLabel||input.placeholder);
+        mic.textContent='🎤';mic.setAttribute('aria-label',data.micLabel||'बोलें');send.textContent='➤';send.setAttribute('aria-label',data.sendLabel||'भेजें');
+        if(!Recognition){mic.hidden=true;status.textContent=data.unsupported||'माइक उपलब्ध नहीं है; टेक्स्ट लिखें';}
+        const submit=(text)=>{const value=String(text||'').trim();if(!value)return; if(!navigator.onLine){status.textContent=data.offline||'इंटरनेट नहीं है; कनेक्शन आने पर दोबारा भेजें';input.value=value;return;}status.textContent='';input.value='';component.setTriggerValue('question',value)};
+        send.onclick=()=>submit(input.value);input.onkeydown=(event)=>{if(event.key==='Enter'){event.preventDefault();submit(input.value)}};
+        mic.onclick=()=>{const recognition=new Recognition();recognition.lang=data.lang||'hi-IN';recognition.interimResults=false;recognition.maxAlternatives=1;
+          recognition.onstart=()=>{mic.classList.add('listening');status.textContent=data.listening||'सुन रहा हूँ…'};
+          recognition.onend=()=>mic.classList.remove('listening');
+          recognition.onerror=(event)=>{mic.classList.remove('listening');status.textContent=event.error==='not-allowed'?(data.denied||'माइक की अनुमति दें'):(data.retry||'दोबारा बोलें')};
+          recognition.onresult=(event)=>{const words=event.results[0]?.[0]?.transcript?.trim();if(words)submit(words)};recognition.start()};
+      }
+    """,
+)
+
 if os.getenv("DEMO_MODE") == "1":
     st.warning(
         "Private demo: sirf 9000000xxx test mobile numbers use karein. "
@@ -41,12 +135,12 @@ INDIA_ACTIVITY_MAP = st.components.v2.component(
     "mittimitra_india_activity_map",
     html="""<div class="map-shell"><div class="map-gloss"></div><div class="map-topline"><span class="map-dot"></span><span id="map-status">Loading India map…</span><span class="map-scale"><i></i><span id="map-legend">Lower GVA → Higher GVA</span></span></div><div id="india-activity-map"></div></div>""",
     css="""
-        .map-shell { position: relative; isolation: isolate; box-sizing: border-box; min-height: 650px; overflow: hidden; border: 1px solid rgba(88, 144, 101, .28); border-radius: 20px; background: linear-gradient(145deg, #fcfff9 0%, #edf8ee 48%, #fff8e9 100%); box-shadow: 0 18px 42px rgba(33, 89, 53, .16), inset 0 1px 0 rgba(255,255,255,.92); }
-        .map-gloss { position: absolute; z-index: 0; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 18% -22%, rgba(255,255,255,.95) 0 25%, transparent 53%), linear-gradient(116deg, transparent 18%, rgba(255,255,255,.42) 32%, transparent 46%); }
+        .map-shell { position: relative; isolation: isolate; box-sizing: border-box; min-height: 650px; overflow: hidden; border: 1px solid rgba(68, 130, 106, .3); border-radius: 22px; background: radial-gradient(circle at 8% 6%, #fff2d5 0, transparent 34%), radial-gradient(circle at 92% 86%, #d9ecfa 0, transparent 37%), linear-gradient(145deg, #fffdf7 0%, #eef9f3 55%, #eaf5fa 100%); box-shadow: 0 22px 48px rgba(28, 86, 65, .17), inset 0 1px 0 rgba(255,255,255,.96); }
+        .map-gloss { position: absolute; z-index: 0; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 16% -22%, rgba(255,255,255,.9) 0 22%, transparent 53%), linear-gradient(116deg, transparent 19%, rgba(255,255,255,.3) 32%, transparent 45%); }
         .map-topline { position: relative; z-index: 1; display: flex; align-items: center; gap: .45rem; padding: .82rem 1rem .52rem; color: #285c3b; font: 800 .76rem/1.2 system-ui, sans-serif; letter-spacing: .035em; text-transform: uppercase; }
         .map-dot { width: .58rem; height: .58rem; border-radius: 50%; background: #2f9d61; box-shadow: 0 0 0 4px rgba(47,157,97,.14); }
         .map-scale { margin-left: auto; display: inline-flex; align-items: center; gap: .42rem; color: #55715d; font-size: .66rem; letter-spacing: .01em; text-transform: none; white-space: nowrap; }
-        .map-scale i { display: inline-block; width: 4.9rem; height: .5rem; border: 1px solid rgba(36,95,58,.2); border-radius: 999px; background: linear-gradient(90deg, #e2f4e7, #a8dfbd 38%, #55b978 70%, #126b45); box-shadow: inset 0 1px 1px rgba(255,255,255,.78); }
+        .map-scale i { display: inline-block; width: 5.4rem; height: .5rem; border: 1px solid rgba(36,95,58,.2); border-radius: 999px; background: linear-gradient(90deg, #b8daf2, #5bb8d3 22%, #63c896 43%, #f4d46e 64%, #ed9d59 82%, #b9563c); box-shadow: inset 0 1px 1px rgba(255,255,255,.78); }
         #india-activity-map { position: relative; z-index: 1; width: 100%; height: 600px; min-height: 600px; }
         @media (max-width: 700px) { .map-shell { min-height: 510px; } #india-activity-map { height: 465px; min-height: 465px; } }
     """,
@@ -131,17 +225,18 @@ INDIA_ACTIVITY_MAP = st.components.v2.component(
                     },
                     colorAxis: {
                         min: 0, max: 42,
-                        stops: [[0, "#e2f4e7"], [.35, "#a8dfbd"], [.7, "#55b978"], [1, "#126b45"]]
+                        // Sequential multi-hue scale: cool low values through green and gold to warm high values.
+                        stops: [[0, "#b8daf2"], [.22, "#5bb8d3"], [.43, "#63c896"], [.64, "#f4d46e"], [.82, "#ed9d59"], [1, "#b9563c"]]
                     },
                     series: [{
                         data: mapData, mapData: shapes, joinBy: ["hc-key", "mapKey"], name: "India",
-                        borderColor: "rgba(255,255,255,.88)", borderWidth: 1, nullColor: "#f8fbf6",
-                        states: { hover: { color: "#f6bd4b", borderColor: "#895c16", borderWidth: 1.35 } },
+                        borderColor: "rgba(255,255,255,.95)", borderWidth: 1.2, nullColor: "#e6e9e7",
+                        states: { hover: { color: "#35568f", borderColor: "#183d70", borderWidth: 1.5 } },
                         dataLabels: {
                             enabled: true, allowOverlap: false, padding: 0, useHTML: true,
                             formatter: function () {
                                 if (!this.point.abbr) return "";
-                                const textColor = Number(this.point.value || 0) >= 25 ? "#ffffff" : "#225538";
+                                const textColor = Number(this.point.value || 0) >= 37 ? "#ffffff" : "#173e36";
                                 return `<span style="color:${textColor};font-size:8px;font-weight:800;text-shadow:0 1px 1px rgba(255,255,255,.42)">${escapeHtml(this.point.abbr)}</span>`;
                             }
                         }
@@ -447,6 +542,56 @@ def localized_crop(crop: str) -> str:
     return crops[language_mode()].get(crop, crop)
 
 
+def localized_disease_value(value: str) -> str:
+    """Keep locally classified crop and disease labels in the selected UI language."""
+    source = str(value).strip()
+    hindi = {
+        "Apple": "सेब", "Bell pepper": "शिमला मिर्च", "Bell Pepper": "शिमला मिर्च", "Cherry": "चेरी",
+        "Maize": "मक्का", "Corn (Maize)": "मक्का", "Grape": "अंगूर", "Peach": "आड़ू", "Potato": "आलू",
+        "Strawberry": "स्ट्रॉबेरी", "Tomato": "टमाटर", "Apple Scab": "सेब की पपड़ी", "Black Rot": "काला सड़न",
+        "Cedar Apple Rust": "सीडर सेब रतुआ", "Healthy": "स्वस्थ", "Bacterial Spot": "जीवाणु धब्बा",
+        "Powdery Mildew": "चूर्णी फफूंदी", "Cercospora Leaf Spot": "सर्कोस्पोरा पत्ती धब्बा",
+        "Common Rust": "सामान्य रतुआ", "Northern Leaf Blight": "उत्तरी पत्ती झुलसा",
+        "Esca (Black Measles)": "एस्का (काला खसरा)", "Leaf Blight": "पत्ती झुलसा",
+        "Early Blight": "शुरुआती झुलसा", "Late Blight": "पछेती झुलसा", "Leaf Scorch": "पत्ती झुलसा",
+        "Septoria Leaf Spot": "सेप्टोरिया पत्ती धब्बा", "Yellow Leaf Curl Virus": "पीला पत्ती मरोड़ वायरस",
+    }
+    hinglish = {
+        "Apple": "Seb", "Bell pepper": "Shimla mirch", "Bell Pepper": "Shimla mirch", "Cherry": "Cherry",
+        "Maize": "Makka", "Corn (Maize)": "Makka", "Grape": "Angoor", "Peach": "Aadu", "Potato": "Aloo",
+        "Strawberry": "Strawberry", "Tomato": "Tamatar", "Apple Scab": "Seb ki papdi", "Black Rot": "Kaali sadan",
+        "Cedar Apple Rust": "Cedar seb ratuwa", "Healthy": "Swasth", "Bacterial Spot": "Jeevanu dhabbe",
+        "Powdery Mildew": "Churni phaphundi", "Cercospora Leaf Spot": "Cercospora patta dhabbe",
+        "Common Rust": "Aam ratuwa", "Northern Leaf Blight": "Uttari patta jhulas",
+        "Esca (Black Measles)": "Esca (kaala khusra)", "Leaf Blight": "Patta jhulas",
+        "Early Blight": "Shuruaati jhulas", "Late Blight": "Pachheti jhulas", "Leaf Scorch": "Patta jhulas",
+        "Septoria Leaf Spot": "Septoria patta dhabbe", "Yellow Leaf Curl Virus": "Peela patta marod virus",
+    }
+    if language_mode() == "Hindi":
+        return hindi.get(source, translated_ui_text(source))
+    if language_mode() == "Hinglish":
+        return hinglish.get(source, source)
+    return translated_ui_text(source)
+
+
+def localized_crop_disease_next_step(healthy: bool) -> str:
+    messages = {
+        "Hindi": (
+            "फोटो से बीमारी की पुष्टि नहीं होती। फसल पर नज़र रखें और लक्षण बदलने पर दिन की साफ रोशनी में नई फोटो लें।"
+            if healthy else "यह केवल शुरुआती दृश्य संकेत है। सिर्फ इस नतीजे से कीटनाशक या उसकी मात्रा न चुनें; फोटो और फसल को KVK, कृषि अधिकारी या योग्य कृषि विशेषज्ञ को दिखाएँ।"
+        ),
+        "Hinglish": (
+            "Photo se bimaari confirm nahi hoti. Fasal par nazar rakhein aur lakshan badalne par daylight mein nayi photo lein."
+            if healthy else "Yeh sirf shuruaati visual signal hai. Sirf is result se pesticide ya dose choose na karein; photo aur fasal ko KVK, agriculture officer ya qualified agronomist ko dikhayein."
+        ),
+        "English": (
+            "A photo does not confirm disease. Keep monitoring the crop and take another clear daylight photo if symptoms change."
+            if healthy else "This is only an early visual signal. Do not choose a pesticide or dosage from this result alone; show the photo and crop to a KVK, agriculture officer, or qualified agronomist."
+        ),
+    }
+    return translated_ui_text(messages[language_mode()])
+
+
 def scheme_updates() -> tuple[tuple[str, str, str], ...]:
     urls = (
         "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2244625&lang=1&reg=1",
@@ -478,6 +623,33 @@ def render_scheme_posters(side: str) -> None:
             <span class='scheme-poster-action'>{action}</span></a>""",
             unsafe_allow_html=True,
         )
+
+
+def render_landing_scheme_preview() -> None:
+    """Show a compact, colourful official-scheme preview below the landing hero."""
+    language = language_mode()
+    heading, caption, label, action = {
+        "Hindi": ("किसान के लिए सरकारी सहायता", "आधिकारिक पोर्टल एक ही जगह", "आधिकारिक योजना", "आधिकारिक जानकारी देखें ↗"),
+        "Hinglish": ("Kisan ke liye sarkari sahayata", "Official portals ek hi jagah", "Official yojana", "Official jaankari dekhein ↗"),
+        "English": ("Government support for farmers", "Official portals in one place", "Official scheme", "View official details ↗"),
+    }[language]
+    st.markdown(
+        f"<div class='landing-scheme-heading'><div><span>{caption}</span><h3>{heading}</h3></div>"
+        "<div class='landing-scheme-line'></div></div>",
+        unsafe_allow_html=True,
+    )
+    featured = OFFICIAL_SCHEME_POSTERS[:3]
+    for index, (column, (icon, title, _, url)) in enumerate(zip(st.columns(3), featured), start=1):
+        summary = SCHEME_POSTER_COPY[language][index - 1]
+        status_kind, status = SCHEME_POSTER_STATUS[language][index - 1]
+        with column:
+            st.markdown(
+                f"""<a class='landing-scheme-card landing-scheme-card-{index}' href='{escape(url, quote=True)}' target='_blank' rel='noopener noreferrer'>
+                <div class='landing-scheme-card-top'><span class='landing-scheme-icon'>{escape(icon)}</span><span class='landing-scheme-label'>{label}</span></div>
+                <strong>{escape(title)}</strong><span class='scheme-poster-status status-{status_kind}'>{escape(status)}</span>
+                <span class='landing-scheme-copy'>{escape(summary)}</span><span class='landing-scheme-action'>{action}</span></a>""",
+                unsafe_allow_html=True,
+            )
 
 
 def render_language_control() -> None:
@@ -547,7 +719,7 @@ def render_how_it_works(compact: bool = False) -> None:
         st.markdown(f"<div class='eyebrow'>{subheading}</div><h3 class='how-heading'>{heading}</h3>", unsafe_allow_html=True)
     for column, (number, icon, title, copy) in zip(st.columns(3), steps):
         with column:
-            st.markdown(f"<div class='step-card'><div class='step-number'>{number}</div><div class='step-icon'>{icon}</div><div class='step-title'>{title}</div><div class='step-copy'>{copy}</div></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='step-card step-card-{number}'><div class='step-number'>{number}</div><div class='step-icon'>{icon}</div><div class='step-title'>{title}</div><div class='step-copy'>{copy}</div></div>", unsafe_allow_html=True)
     st.markdown(f"<div class='help-note'><strong>{note_label}:</strong> {note}</div>", unsafe_allow_html=True)
 
 
@@ -576,6 +748,50 @@ def inject_css() -> None:
         .login-hero {min-height:590px;border-radius:22px;background-position:center;background-size:cover;position:relative;overflow:hidden;box-shadow:0 15px 34px rgba(37,91,54,.18);} .login-hero:before {content:'';position:absolute;inset:0;background:linear-gradient(90deg,rgba(10,45,25,.86) 0%,rgba(10,45,25,.56) 48%,rgba(10,45,25,.08) 100%);} .hero-copy {position:relative;z-index:1;padding:1.8rem;color:#f6fff0;max-width:72%;}.hero-copy h1 {font-size:clamp(2rem,3.7vw,3.6rem);line-height:1.06;letter-spacing:-2px;margin:.5rem 0 .8rem;color:#fff;}.hero-copy p {color:#e0f1df;line-height:1.55;font-size:.96rem;}.hero-kicker {font:500 .7rem 'DM Mono',monospace;letter-spacing:.12em;color:#bdecb6;text-transform:uppercase;}.hero-chip {display:inline-block;margin-top:.55rem;padding:.4rem .7rem;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.28);border-radius:999px;font-size:.76rem;}
         .login-panel {padding:.25rem .1rem;}.login-panel h3 {margin:.35rem 0;color:#183126;} div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .login-panel) {min-height:490px;box-sizing:border-box;padding:.8rem .85rem .65rem;border:1px solid #d8e7d9;border-radius:20px;background:rgba(255,255,255,.92);box-shadow:0 16px 34px rgba(34,79,52,.10);} .service-card {background:#fff;border:1px solid #e0e9df;border-radius:16px;padding:1rem;min-height:114px;box-shadow:0 8px 24px rgba(34,79,52,.06);}.service-icon {font-size:1.55rem;display:inline-block;margin-bottom:.35rem;}.service-title {font-weight:800;color:#224936;margin:.1rem 0 .3rem;}.service-copy {font-size:.82rem;line-height:1.45;color:#657a6b;}
         .scheme-poster {position:relative;display:flex;min-height:178px;margin-bottom:.72rem;padding:1rem .88rem;overflow:hidden;flex-direction:column;border:1px solid rgba(39,106,61,.2);border-radius:18px;background:linear-gradient(145deg,#f9fff4,#dff2d9);box-shadow:0 12px 26px rgba(34,79,52,.10);color:#183126;text-decoration:none;transition:transform .16s ease,box-shadow .16s ease;}.scheme-poster:hover {transform:translateY(-3px);box-shadow:0 16px 30px rgba(34,79,52,.16);color:#183126;}.scheme-poster:after {content:'';position:absolute;right:-32px;bottom:-42px;width:112px;height:112px;border:20px solid rgba(46,136,68,.10);border-radius:50%;}.scheme-poster-2 {background:linear-gradient(145deg,#fffbed,#f7e4a4);}.scheme-poster-3 {background:linear-gradient(145deg,#edf8ff,#d8ebf9);}.scheme-poster-label {font:700 .57rem 'DM Mono',monospace;letter-spacing:.1em;color:#478455;text-transform:uppercase;}.scheme-poster-icon {margin:.35rem 0 .15rem;font-size:1.45rem;color:#1f9254;font-weight:800;}.scheme-poster strong {position:relative;z-index:1;font-size:1rem;line-height:1.18;color:#1d432b;}.scheme-poster-status {position:relative;z-index:1;display:inline-flex;align-self:flex-start;margin-top:.35rem;padding:.16rem .38rem;border-radius:999px;font:700 .55rem 'DM Mono',monospace;letter-spacing:.02em;}.status-active {background:#dff3df;color:#23763a;}.status-seasonal {background:#fff0c5;color:#8a6410;}.status-info,.status-rollout {background:#e8edf1;color:#58707c;}.scheme-poster-copy {position:relative;z-index:1;margin-top:.4rem;font-size:.7rem;line-height:1.42;color:#516c59;}.scheme-poster-action {position:relative;z-index:1;margin-top:auto;padding-top:.5rem;font-size:.68rem;font-weight:800;color:#197844;}
+        /* Warm field tones and layered surfaces keep the content legible without flat white boxes. */
+        .stApp {background:radial-gradient(circle at 3% 4%,rgba(245,207,126,.24),transparent 30%),radial-gradient(circle at 96% 8%,rgba(156,207,238,.3),transparent 32%),linear-gradient(160deg,#f5faf2 0%,#f9fbf5 48%,#f2f8f5 100%);}
+        .top-strip {background:linear-gradient(105deg,#155c3e,#258456 72%,#31976a);box-shadow:0 9px 24px rgba(19,83,56,.15);}
+        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .login-panel) {border-color:#d2e5d4;background:linear-gradient(155deg,rgba(255,255,255,.98),rgba(240,249,238,.96));box-shadow:0 20px 44px rgba(27,78,51,.15),inset 0 1px 0 #fff;}
+        .service-card,.step-card,.resource-card,.scheme-card,.metric-card,.scan-card,.portal-panel {border-color:#d1e4d6;background:linear-gradient(148deg,#fff 0%,#f3faf3 100%);box-shadow:0 12px 28px rgba(29,83,54,.1),inset 0 1px 0 rgba(255,255,255,.95);}
+        .service-card {border-top:4px solid #46ad72;background:linear-gradient(150deg,#fff 0%,#eaf7ee 100%);}
+        .service-card-2 {border-top-color:#65afd1;background:linear-gradient(150deg,#fff,#eaf6fc);}
+        .service-card-3 {border-top-color:#e8ac4c;background:linear-gradient(150deg,#fff,#fff5df);}
+        .service-icon {display:grid;place-items:center;width:2.6rem;height:2.6rem;border-radius:13px;background:linear-gradient(135deg,#e2f4e8,#d7eef5);box-shadow:inset 0 1px 0 #fff;}
+        .stApp .step-card {border-top:4px solid #e7ae4e;background:linear-gradient(155deg,#fffefa,#f2faf3);}
+        .stApp .step-card-2 {border-top-color:#68b9d5;background:linear-gradient(155deg,#fff,#ecf7fc);}
+        .stApp .step-card-3 {border-top-color:#59b683;background:linear-gradient(155deg,#fff,#ecf8ee);}
+        .stApp .step-number {background:#216e49;color:#fff;box-shadow:0 4px 10px rgba(25,100,63,.2);}
+        .resource-card {border-top:3px solid #75b9d4;background:linear-gradient(150deg,#fff,#edf7fb);}
+        .scheme-card {border-top:3px solid #54b378;background:linear-gradient(150deg,#fff,#eef9ef);}
+        .scheme-card-2 {border-top-color:#e8ac4c;background:linear-gradient(150deg,#fff,#fff6e4);}
+        .scheme-card-3 {border-top-color:#75b9d4;background:linear-gradient(150deg,#fff,#edf7fb);}
+        .metric-card {border-left:4px solid #3eaf7e;background:linear-gradient(145deg,#fff,#edf8f3);}
+        .scan-card {background:linear-gradient(145deg,#fff,#f0faf6);}
+        .portal-panel {background:linear-gradient(150deg,#fff,#f0f7fd);}
+        .stApp .st-key-lab_lease_area {border-color:#cfe4d3;background:linear-gradient(145deg,#fff,#eff8ef 60%,#edf6fc);box-shadow:0 18px 36px rgba(28,81,54,.12);}
+        .stApp .st-key-india_summary_card {border-color:#d2e5d8;background:linear-gradient(145deg,#fff 0%,#edf8f4 56%,#ecf4fc 100%);box-shadow:0 16px 32px rgba(31,83,58,.12);}
+        .stButton>button,.stLinkButton>a {background:linear-gradient(105deg,#1f965b,#167c4d);box-shadow:0 5px 14px rgba(20,104,60,.17);transition:transform .16s ease,box-shadow .16s ease,background .16s ease;}
+        .stButton>button:hover,.stLinkButton>a:hover {background:linear-gradient(105deg,#1b8751,#116f45);transform:translateY(-1px);box-shadow:0 9px 18px rgba(20,104,60,.23);}
+        .scheme-poster:focus-visible,.stButton>button:focus-visible,.stLinkButton>a:focus-visible {outline:3px solid #db9c3a;outline-offset:2px;}
+        @media (prefers-reduced-motion:reduce) {.stButton>button,.stLinkButton>a {transition:none;}.stButton>button:hover,.stLinkButton>a:hover {transform:none;}}
+        /* Landing page: one generous hero and a clear entry point, instead of narrow side rails. */
+        .st-key-landing_hero_shell {position:relative;max-width:1230px;margin:1.1rem auto .35rem;padding:1.05rem;border:1px solid rgba(56,119,79,.18);border-radius:28px;background:linear-gradient(135deg,rgba(255,255,255,.75),rgba(234,248,237,.7));box-shadow:0 22px 58px rgba(22,72,46,.13),inset 0 1px 0 rgba(255,255,255,.95);}
+        .st-key-landing_hero_shell:before {content:'';position:absolute;inset:0;pointer-events:none;border-radius:inherit;background:radial-gradient(circle at 90% 10%,rgba(242,190,77,.14),transparent 25%),radial-gradient(circle at 5% 90%,rgba(77,162,219,.10),transparent 28%);}
+        .st-key-landing_hero_shell > div {position:relative;z-index:1;}
+        .st-key-landing_hero_shell .login-hero {min-height:520px;border-radius:23px;box-shadow:0 20px 48px rgba(22,62,37,.26);}
+        .st-key-landing_hero_shell .login-hero:before {background:linear-gradient(102deg,rgba(7,38,22,.92) 0%,rgba(15,69,38,.78) 49%,rgba(16,62,38,.16) 100%);}
+        .hero-wash {position:absolute;inset:0;z-index:1;pointer-events:none;background:radial-gradient(circle at 84% 14%,rgba(240,191,76,.34),transparent 22%),linear-gradient(130deg,transparent 58%,rgba(157,225,177,.12));}
+        .st-key-landing_hero_shell .hero-copy {display:flex;min-height:520px;box-sizing:border-box;flex-direction:column;justify-content:center;max-width:76%;padding:2.35rem 2.45rem;color:#fff;}
+        .hero-topline {display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;}.hero-trust {display:inline-flex;align-items:center;padding:.27rem .56rem;border:1px solid rgba(237,252,220,.3);border-radius:999px;background:rgba(236,252,225,.13);color:#e6f7d8;font-size:.69rem;font-weight:700;}
+        .st-key-landing_hero_shell .hero-copy h1 {max-width:620px;font-size:clamp(2.65rem,5vw,4.6rem);letter-spacing:-.06em;line-height:.98;margin:.72rem 0 1rem;text-wrap:balance;}.st-key-landing_hero_shell .hero-copy p {max-width:535px;font-size:1.02rem;line-height:1.64;color:#e5f3e4;}
+        .st-key-landing_hero_shell .hero-chip {align-self:flex-start;margin-top:1rem;padding:.5rem .78rem;background:rgba(255,255,255,.13);backdrop-filter:blur(5px);font-weight:600;}.hero-stats {display:flex;gap:.55rem;margin-top:1.6rem;max-width:570px;}.hero-stat {flex:1;min-width:0;padding:.68rem .72rem;border:1px solid rgba(255,255,255,.24);border-radius:14px;background:rgba(6,42,23,.22);backdrop-filter:blur(8px);}.hero-stat b {display:block;color:#fff;font-size:.84rem;line-height:1.2;}.hero-stat span {display:block;margin-top:.2rem;color:#d9efdd;font-size:.67rem;line-height:1.25;}
+        .st-key-landing_hero_shell div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .login-panel) {position:relative;min-height:520px;padding:1.5rem 1.45rem 1.25rem;border:1px solid rgba(221,237,224,.92);border-radius:23px;background:linear-gradient(165deg,rgba(255,255,255,.98),rgba(239,249,240,.98));box-shadow:0 18px 38px rgba(27,75,49,.13),inset 0 1px 0 #fff;overflow:hidden;}
+        .st-key-landing_hero_shell div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .login-panel):before {content:'';position:absolute;top:-70px;right:-66px;width:164px;height:164px;border-radius:50%;background:radial-gradient(circle at 30% 30%,rgba(243,195,84,.35),rgba(78,174,111,.06) 70%,transparent 71%);}
+        .st-key-landing_hero_shell .login-panel {position:relative;padding:0;}.login-panel-orb {display:inline-block;width:9px;height:9px;margin-right:.38rem;border-radius:50%;background:#f0ad3c;box-shadow:0 0 0 5px rgba(240,173,60,.14);}.st-key-landing_hero_shell .brand {display:inline;font-size:1.58rem;}.st-key-landing_hero_shell .eyebrow {display:block;margin-top:.55rem;}.st-key-landing_hero_shell .login-panel h3 {margin:.28rem 0 .35rem;font-size:1.75rem;letter-spacing:-.04em;}.login-panel-rule {height:3px;width:54px;margin:.72rem 0 1rem;border-radius:999px;background:linear-gradient(90deg,#e7aa46,#4faf72);}.st-key-landing_hero_shell [data-testid="stCaptionContainer"] {position:relative;margin:.12rem 0 .65rem;line-height:1.46;}.st-key-landing_hero_shell .stButton>button {min-height:46px;border-radius:13px;}.st-key-open_admin_portal button {background:transparent!important;color:#296342!important;box-shadow:inset 0 0 0 1px #b9d9c0!important;}
+        .landing-scheme-heading {display:flex;align-items:flex-end;gap:1rem;max-width:1230px;margin:1.4rem auto .7rem;padding:0 .55rem;}.landing-scheme-heading span {display:block;color:#5b9c6d;font:700 .68rem 'DM Mono',monospace;letter-spacing:.09em;text-transform:uppercase;}.landing-scheme-heading h3 {margin:.25rem 0 0;color:#1b402a;font-size:1.4rem;letter-spacing:-.04em;}.landing-scheme-line {height:1px;flex:1;margin:0 0 .45rem;background:linear-gradient(90deg,#b8ddc1,transparent);}
+        .landing-scheme-card {position:relative;display:flex;min-height:184px;padding:1rem;overflow:hidden;flex-direction:column;border:1px solid #d6e8d5;border-radius:18px;background:linear-gradient(145deg,#ffffff,#edf9ef);box-shadow:0 12px 27px rgba(30,82,53,.09);color:#1b432c!important;text-decoration:none!important;transition:transform .18s ease,box-shadow .18s ease;}.landing-scheme-card:hover {transform:translateY(-4px);box-shadow:0 18px 35px rgba(30,82,53,.15);}.landing-scheme-card:after {content:'';position:absolute;right:-34px;bottom:-46px;width:132px;height:132px;border:23px solid rgba(63,162,101,.10);border-radius:50%;}.landing-scheme-card-2 {background:linear-gradient(145deg,#fffefa,#fff3ca);border-color:#f0dda1;}.landing-scheme-card-2:after {border-color:rgba(229,164,48,.12);}.landing-scheme-card-3 {background:linear-gradient(145deg,#ffffff,#eaf5ff);border-color:#c8e0f3;}.landing-scheme-card-3:after {border-color:rgba(71,149,208,.12);}.landing-scheme-card-top {position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;}.landing-scheme-icon {display:grid;place-items:center;width:2.25rem;height:2.25rem;border-radius:12px;background:rgba(255,255,255,.85);box-shadow:0 5px 12px rgba(37,91,54,.08);font-size:1.18rem;}.landing-scheme-label {font:700 .58rem 'DM Mono',monospace;color:#538560;letter-spacing:.08em;text-transform:uppercase;}.landing-scheme-card strong {position:relative;z-index:1;display:block;margin:.72rem 0 .38rem;font-size:1.07rem;line-height:1.18;}.landing-scheme-card .scheme-poster-status {margin:0;}.landing-scheme-copy {position:relative;z-index:1;margin-top:.55rem;color:#5c7463;font-size:.75rem;line-height:1.42;}.landing-scheme-action {position:relative;z-index:1;margin-top:auto;padding-top:.65rem;color:#187844;font-size:.71rem;font-weight:800;}
+        @media (max-width:950px) {.st-key-landing_hero_shell {padding:.75rem;border-radius:22px;}.st-key-landing_hero_shell .login-hero,.st-key-landing_hero_shell .hero-copy,.st-key-landing_hero_shell div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .login-panel) {min-height:480px;}.st-key-landing_hero_shell .hero-copy {padding:1.7rem;max-width:86%;}.st-key-landing_hero_shell .hero-copy h1 {font-size:clamp(2.3rem,5.7vw,3.7rem);}.hero-stats {gap:.35rem;}.hero-stat {padding:.55rem;}.landing-scheme-card {min-height:170px;padding:.82rem;}.landing-scheme-copy {font-size:.7rem;}}
+        @media (max-width:640px) {.st-key-landing_hero_shell {margin:.55rem auto;padding:.45rem;border-radius:18px;}.st-key-landing_hero_shell .login-hero,.st-key-landing_hero_shell .hero-copy {min-height:420px;}.st-key-landing_hero_shell .hero-copy {max-width:100%;padding:1.5rem;}.st-key-landing_hero_shell .hero-copy h1 {font-size:2.48rem;}.hero-stats {margin-top:1rem;}.hero-stat b {font-size:.74rem;}.hero-stat span {font-size:.6rem;}.st-key-landing_hero_shell div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .login-panel) {min-height:auto;margin-top:.4rem;padding:1.15rem;}.landing-scheme-heading {margin-top:1rem;}.landing-scheme-line {display:none;}.landing-scheme-card {min-height:145px;margin-bottom:.4rem;}}
         @media (max-width:1100px) {.block-container {max-width:1180px;} .scheme-poster {min-height:145px;padding:.72rem;}.scheme-poster-copy {display:none;}.login-hero {min-height:560px;} div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .login-panel) {min-height:470px;padding:.7rem;}}
         .how-heading {margin:.25rem 0 .75rem;color:#1e412e;font-size:1.32rem;}.step-card {position:relative;height:100%;min-height:162px;padding:1rem 1rem .95rem;border:1px solid #dce9de;border-radius:16px;background:#fff;box-shadow:0 8px 22px rgba(34,79,52,.055);}.step-number {position:absolute;right:.8rem;top:.7rem;display:grid;place-items:center;width:23px;height:23px;border-radius:50%;background:#e7f5e8;color:#267c45;font:700 .72rem 'DM Mono',monospace;}.step-icon {font-size:1.7rem;margin:.05rem 0 .4rem;}.step-title {color:#214a32;font-weight:800;font-size:.95rem;line-height:1.35;max-width:85%;}.step-copy {margin-top:.38rem;color:#657a6b;font-size:.79rem;line-height:1.48;}.help-note {margin:.75rem 0 1.15rem;padding:.68rem .85rem;border-radius:10px;border:1px solid #efdca3;background:#fffaf0;color:#6d5b2e;font-size:.82rem;line-height:1.48;}
         .st-key-kisan_mitra_floating {position:fixed!important;z-index:1000;right:1.15rem;bottom:1.15rem;width:min(390px,calc(100vw - 2.3rem));padding:0!important;overflow:hidden;border:1px solid rgba(71,153,88,.35)!important;border-radius:22px!important;background:linear-gradient(145deg,rgba(255,255,255,.99),rgba(235,250,238,.98))!important;box-shadow:0 24px 62px rgba(19,70,38,.28),inset 0 1px 0 rgba(255,255,255,.95)!important;backdrop-filter:blur(18px);}.st-key-kisan_mitra_floating .ai-float-hero {margin:-1rem -1rem .15rem;padding:1rem 1.05rem .9rem;background:radial-gradient(circle at 88% -30%,rgba(251,214,112,.8),transparent 48%),linear-gradient(132deg,#123f2b,#1d8751 62%,#4db476);color:#fff;}.ai-float-title-row {display:flex;align-items:center;gap:.65rem;}.ai-float-avatar {display:grid;place-items:center;width:38px;height:38px;border-radius:14px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.28);font-size:1.25rem;box-shadow:inset 0 1px 0 rgba(255,255,255,.22);}.ai-float-title {font-size:1rem;font-weight:800;line-height:1.1;}.ai-float-status {margin-top:.17rem;font-size:.66rem;color:#cef6d7;}.ai-float-status i {display:inline-block;width:6px;height:6px;margin-right:.26rem;border-radius:50%;background:#e5f77d;box-shadow:0 0 0 4px rgba(229,247,125,.15);}.ai-float-hero p {margin:.72rem 0 0;color:#e6f8eb;font-size:.76rem;line-height:1.42;}.st-key-kisan_mitra_floating .ai-chat-history {margin:.15rem 0 .35rem;padding:.1rem .25rem;border:1px solid #d8eadb;border-radius:14px;background:rgba(255,255,255,.62);}.st-key-kisan_mitra_floating div[data-testid="stChatMessage"] {padding:.28rem .12rem!important;gap:.38rem!important;}.st-key-kisan_mitra_floating div[data-testid="stTextArea"] textarea {min-height:60px!important;font-size:.82rem!important;}.st-key-kisan_mitra_floating .stButton>button {font-size:.79rem;padding:.43rem .58rem;}.st-key-kisan_mitra_floating [data-testid="stPills"] {margin-top:.1rem;}.st-key-lab_lease_area {padding:1rem;border:1px solid #dbeadf;border-radius:20px;background:linear-gradient(145deg,#ffffff,#f1fbf2);box-shadow:0 14px 32px rgba(34,79,52,.08);}.st-key-profile_corner {margin-left:auto;} @media (max-width:800px) {.st-key-kisan_mitra_floating {position:relative!important;right:auto;bottom:auto;width:stretch;margin-top:1rem;}.st-key-kisan_mitra_floating .ai-float-hero {margin:-1rem -1rem .25rem;}}
@@ -590,15 +806,27 @@ def inject_css() -> None:
         .ai-float-title-row {margin-bottom:.3rem;}.ai-float-title {font-size:1rem;}.ai-float-status {color:#d8f4df;}
         .st-key-kisan_mitra_floating .st-key-ai_chat_history {padding:.45rem!important;border:1px solid #e4eee5;border-radius:15px;background:#f8fbf7;}
         .st-key-kisan_mitra_floating div[data-testid="stChatMessage"] {border-radius:12px;}
-        .st-key-kisan_mitra_floating [data-testid="stChatInput"] {border-radius:15px;}
-        .st-key-kisan_mitra_floating [data-testid="stChatInput"] textarea {min-height:46px!important;font-size:.84rem!important;}
         .st-key-kisan_mitra_floating [data-testid="stPills"] {margin:.05rem 0 .2rem;}
         .st-key-kisan_mitra_floating [data-testid="stExpander"] {border-color:#e2ede3;}
+        .st-key-kisan_mitra_floating .stButton>button {min-height:48px;font-size:1rem;}
+        .st-key-kisan_mitra_floating .st-key-ai_chat_history {background:#f1f8f2!important;}
+        .st-key-kisan_mitra_floating .st-key-ai_chat_history [data-testid="stMarkdownContainer"] p {font-size:1rem;line-height:1.5;}
+        .st-key-kisan_mitra_floating {padding-bottom:5.4rem!important;}
+        .st-key-mitarr_composer {position:fixed!important;right:1.8rem!important;bottom:1.8rem!important;width:min(388px,calc(100vw - 3rem))!important;z-index:1056;background:#fff;padding:.42rem;border:1px solid #d9e9dc;border-radius:17px;box-shadow:0 -5px 20px rgba(22,68,37,.1);}
         @keyframes mitarr-enter {from {opacity:0;transform:translateX(85px) rotate(8deg)} to {opacity:1;transform:translateX(0) rotate(0)}}
         @keyframes mitarr-wave {0%,100% {transform:rotate(0)} 35%,75% {transform:rotate(-19deg)}}
         @keyframes mitarr-speak {from {opacity:0;transform:translateY(8px) scale(.96)} to {opacity:1;transform:translateY(0) scale(1)}}
         @media (prefers-reduced-motion:reduce) {.mitarr-figure,.mitarr-hand,.mitarr-bubble {animation:none!important;}}
         @media (max-width:800px) {.st-key-kisan_mitra_floating {width:100%;max-height:none;}.st-key-kisan_mitra_floating .ai-float-hero {margin:0 0 .25rem;}}
+        @media (max-width:800px) {
+          .st-key-kisan_mitra_floating .ai-float-hero {padding:.5rem .6rem!important;}
+          .st-key-kisan_mitra_floating .mitarr-stage {min-height:78px!important;}
+          .st-key-kisan_mitra_floating .mitarr-figure {width:68px!important;height:76px!important;}
+          .st-key-kisan_mitra_floating .mitarr-bubble {font-size:.72rem!important;padding:.42rem!important;}
+          .st-key-kisan_mitra_floating .st-key-ai_chat_history {max-height:180px!important;overflow-y:auto!important;}
+          .st-key-kisan_mitra_floating {padding-bottom:5.2rem!important;}
+          .st-key-mitarr_composer {left:.7rem!important;right:.7rem!important;bottom:4.8rem!important;width:auto!important;}
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -669,97 +897,113 @@ def render_new_farmer_registration() -> None:
 def login_screen() -> None:
     render_language_control()
     render_live_farmer_banner()
-    left_posters, hero_column, login_column, right_posters = st.columns([.42, 1.6, .86, .42], gap="small")
-    with left_posters:
-        render_scheme_posters("left")
-    with hero_column:
-        st.markdown(f"""<section class="login-hero"><div class="hero-copy"><div class="hero-kicker">{tr('hero_kicker')}</div><h1>{tr('hero_title')}</h1><p>{tr('hero_copy')}</p><div class="hero-chip">{tr('hero_chip')}</div></div></section>""", unsafe_allow_html=True)
-    with login_column:
-        st.markdown(f"<div class='login-panel'><div class='brand'>Mitti<span>Mitra</span></div><div class='eyebrow'>{tr('access')}</div><h3>{tr('start')}</h3></div>", unsafe_allow_html=True)
-        st.caption(registration_text("intro"))
-        if st.button("Admin portal login", icon=":material/admin_panel_settings:", width="stretch", key="open_admin_portal"):
-            st.session_state.admin_mode = True
-            st.rerun()
-        if st.session_state.get("login_step", "profile") == "profile":
-            if not st.session_state.get("show_registration", False):
-                st.caption(registration_text("returning_intro"))
-                returning_phone = st.text_input(registration_text("phone"), placeholder=registration_text("phone_hint"), key="returning_phone")
-                if st.button(registration_text("returning_send"), use_container_width=True, key="returning_otp_request"):
-                    if phone_error := demo_phone_error(returning_phone):
-                        st.error(phone_error)
-                    else:
-                        response, error = api_call("POST", "/auth/request-otp", json={"phone_number": returning_phone.strip()})
-                        if error:
-                            st.error(error)
-                        elif response:
-                            st.session_state.pending_returning_phone = returning_phone.strip()
-                            st.session_state.pending_otp = response.get("otp")
-                            st.session_state.login_step = "returning_otp"
-                            st.rerun()
-                if st.button(registration_text("new_registration"), use_container_width=True, key="open_registration"):
-                    st.session_state.show_registration = True
-                    st.rerun()
-            else:
-                render_new_farmer_registration()
-        elif st.session_state.get("login_step") == "returning_otp":
-            st.success(registration_text("sent"))
-            if local_otp := st.session_state.get("pending_otp"):
-                st.warning(registration_text("screen_otp").format(otp=local_otp))
-            with st.form("returning_otp_verify_form"):
-                otp = st.text_input(registration_text("otp"), max_chars=8, placeholder=registration_text("otp_hint"))
-                verify = st.form_submit_button(registration_text("returning_verify"), use_container_width=True)
-            if verify:
-                phone_number = str(st.session_state.get("pending_returning_phone", ""))
-                response, error = api_call(
-                    "POST",
-                    "/auth/verify-returning-otp",
-                    json={"phone_number": phone_number, "otp": otp.strip()},
-                )
-                if error:
-                    st.error(error)
-                elif response:
-                    st.session_state.logged_in = True
-                    st.session_state.user_name = response["farmer"]["full_name"]
-                    st.session_state.farmer_state = response["farmer"]["state"]
-                    st.session_state.session_token = response["session_token"]
+    hero_details = {
+        "Hindi": (("एक फोटो", "मिट्टी के संकेत"), ("एक OTP", "सुरक्षित प्रवेश"), ("सभी भारत", "राज्य सहायता"), "विश्वसनीय किसान सहायक"),
+        "Hinglish": (("Ek photo", "Mitti ke signals"), ("Ek OTP", "Safe access"), ("All India", "State support"), "Aapka bharosemand kheti saathi"),
+        "English": (("One photo", "Soil signals"), ("One OTP", "Secure access"), ("All India", "State support"), "Your trusted farming companion"),
+    }[language_mode()]
+    with st.container(key="landing_hero_shell", border=False):
+        hero_column, login_column = st.columns([1.46, .82], gap="large", vertical_alignment="top")
+        with hero_column:
+            hero_stats = "".join(
+                f"<div class='hero-stat'><b>{escape(value)}</b><span>{escape(label)}</span></div>"
+                for value, label in hero_details[:3]
+            )
+            st.markdown(
+                f"""<section class="login-hero"><div class='hero-wash'></div><div class="hero-copy">
+                <div class='hero-topline'><span class='hero-kicker'>{tr('hero_kicker')}</span><span class='hero-trust'>✦ {hero_details[3]}</span></div>
+                <h1>{tr('hero_title')}</h1><p>{tr('hero_copy')}</p><div class="hero-chip">{tr('hero_chip')}</div>
+                <div class='hero-stats'>{hero_stats}</div></div></section>""",
+                unsafe_allow_html=True,
+            )
+        with login_column:
+            st.markdown(
+                f"<div class='login-panel'><div class='login-panel-orb'></div><div class='brand'>Mitti<span>Mitra</span></div>"
+                f"<div class='eyebrow'>{tr('access')}</div><h3>{tr('start')}</h3><div class='login-panel-rule'></div></div>",
+                unsafe_allow_html=True,
+            )
+            st.caption(registration_text("intro"))
+            if st.button("Admin portal login", icon=":material/admin_panel_settings:", width="stretch", key="open_admin_portal"):
+                st.session_state.admin_mode = True
+                st.rerun()
+            if st.session_state.get("login_step", "profile") == "profile":
+                if not st.session_state.get("show_registration", False):
+                    st.caption(registration_text("returning_intro"))
+                    returning_phone = st.text_input(registration_text("phone"), placeholder=registration_text("phone_hint"), key="returning_phone")
+                    if st.button(registration_text("returning_send"), width="stretch", key="returning_otp_request"):
+                        if phone_error := demo_phone_error(returning_phone):
+                            st.error(phone_error)
+                        else:
+                            response, error = api_call("POST", "/auth/request-otp", json={"phone_number": returning_phone.strip()})
+                            if error:
+                                st.error(error)
+                            elif response:
+                                st.session_state.pending_returning_phone = returning_phone.strip()
+                                st.session_state.pending_otp = response.get("otp")
+                                st.session_state.login_step = "returning_otp"
+                                st.rerun()
+                    if st.button(registration_text("new_registration"), width="stretch", key="open_registration"):
+                        st.session_state.show_registration = True
+                        st.rerun()
+                else:
+                    render_new_farmer_registration()
+            elif st.session_state.get("login_step") == "returning_otp":
+                st.success(registration_text("sent"))
+                if local_otp := st.session_state.get("pending_otp"):
+                    st.warning(registration_text("screen_otp").format(otp=local_otp))
+                with st.form("returning_otp_verify_form"):
+                    otp = st.text_input(registration_text("otp"), max_chars=8, placeholder=registration_text("otp_hint"))
+                    verify = st.form_submit_button(registration_text("returning_verify"), width="stretch")
+                if verify:
+                    phone_number = str(st.session_state.get("pending_returning_phone", ""))
+                    response, error = api_call(
+                        "POST", "/auth/verify-returning-otp",
+                        json={"phone_number": phone_number, "otp": otp.strip()},
+                    )
+                    if error:
+                        st.error(error)
+                    elif response:
+                        st.session_state.logged_in = True
+                        st.session_state.user_name = response["farmer"]["full_name"]
+                        st.session_state.farmer_state = response["farmer"]["state"]
+                        st.session_state.session_token = response["session_token"]
+                        st.session_state.login_step = "profile"
+                        st.session_state.pop("show_registration", None)
+                        st.session_state.pop("pending_returning_phone", None)
+                        st.session_state.pop("pending_otp", None)
+                        st.rerun()
+                if st.button(registration_text("back_to_registration"), width="stretch"):
                     st.session_state.login_step = "profile"
-                    st.session_state.pop("show_registration", None)
                     st.session_state.pop("pending_returning_phone", None)
                     st.session_state.pop("pending_otp", None)
                     st.rerun()
-            if st.button(registration_text("back_to_registration"), use_container_width=True):
-                st.session_state.login_step = "profile"
-                st.session_state.pop("pending_returning_phone", None)
-                st.session_state.pop("pending_otp", None)
-                st.rerun()
-        else:
-            st.success(registration_text("sent"))
-            if local_otp := st.session_state.get("pending_otp"):
-                st.warning(registration_text("screen_otp").format(otp=local_otp))
-            with st.form("otp_verify_form"):
-                otp = st.text_input(registration_text("otp"), max_chars=8, placeholder=registration_text("otp_hint"))
-                verify = st.form_submit_button(registration_text("verify"), use_container_width=True)
-            if verify:
-                profile = dict(st.session_state.get("pending_profile", {}))
-                response, error = api_call("POST", "/auth/verify-otp", json={**profile, "otp": otp.strip()})
-                if error:
-                    st.error(error)
-                elif response:
-                    st.session_state.logged_in = True
-                    st.session_state.user_name = response["farmer"]["full_name"]
-                    st.session_state.farmer_state = response["farmer"]["state"]
-                    st.session_state.session_token = response["session_token"]
+            else:
+                st.success(registration_text("sent"))
+                if local_otp := st.session_state.get("pending_otp"):
+                    st.warning(registration_text("screen_otp").format(otp=local_otp))
+                with st.form("otp_verify_form"):
+                    otp = st.text_input(registration_text("otp"), max_chars=8, placeholder=registration_text("otp_hint"))
+                    verify = st.form_submit_button(registration_text("verify"), width="stretch")
+                if verify:
+                    profile = dict(st.session_state.get("pending_profile", {}))
+                    response, error = api_call("POST", "/auth/verify-otp", json={**profile, "otp": otp.strip()})
+                    if error:
+                        st.error(error)
+                    elif response:
+                        st.session_state.logged_in = True
+                        st.session_state.user_name = response["farmer"]["full_name"]
+                        st.session_state.farmer_state = response["farmer"]["state"]
+                        st.session_state.session_token = response["session_token"]
+                        st.session_state.login_step = "profile"
+                        st.session_state.pop("show_registration", None)
+                        st.session_state.pop("pending_profile", None)
+                        st.session_state.pop("pending_otp", None)
+                        st.rerun()
+                if st.button(registration_text("edit")):
                     st.session_state.login_step = "profile"
-                    st.session_state.pop("show_registration", None)
-                    st.session_state.pop("pending_profile", None)
                     st.session_state.pop("pending_otp", None)
                     st.rerun()
-            if st.button(registration_text("edit")):
-                st.session_state.login_step = "profile"
-                st.session_state.pop("pending_otp", None)
-                st.rerun()
-    with right_posters:
-        render_scheme_posters("right")
+    render_landing_scheme_preview()
     if st.session_state.get("login_step", "profile") == "profile" and not st.session_state.get("show_registration", False):
         st.markdown("<br>", unsafe_allow_html=True)
         render_farmer_activity_map()
@@ -771,15 +1015,15 @@ def login_screen() -> None:
         ("💧", tr("water_title"), tr("water_copy")),
         ("🧭", tr("state_title"), tr("state_copy")),
     )
-    for column, (icon, title, copy) in zip(st.columns(3), service_cards):
+    for index, (column, (icon, title, copy)) in enumerate(zip(st.columns(3), service_cards), start=1):
         with column:
-            st.markdown(f"<div class='service-card'><div class='service-icon'>{icon}</div><div class='service-title'>{title}</div><div class='service-copy'>{copy}</div></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='service-card service-card-{index}'><div class='service-icon'>{icon}</div><div class='service-title'>{title}</div><div class='service-copy'>{copy}</div></div>", unsafe_allow_html=True)
     st.markdown(f"<br><div class='eyebrow'>{tr('updates')}</div>", unsafe_allow_html=True)
     st.markdown(f"#### {tr('updates_heading')}")
     schemes = scheme_updates()
-    for column, (title, summary, url) in zip(st.columns(3), schemes):
+    for index, (column, (title, summary, url)) in enumerate(zip(st.columns(3), schemes), start=1):
         with column:
-            st.markdown(f"<div class='scheme-card'><div class='eyebrow'>{tr('official_update')}</div><div class='portal-name'>{title}</div><div class='portal-copy'>{summary}</div></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='scheme-card scheme-card-{index}'><div class='eyebrow'>{tr('official_update')}</div><div class='portal-name'>{title}</div><div class='portal-copy'>{summary}</div></div>", unsafe_allow_html=True)
             st.link_button(tr("read_update"), url, use_container_width=True)
 
 
@@ -935,6 +1179,42 @@ def render_kisan_mitra_floating() -> None:
         return
     language = language_mode()
     chosen_language = selected_language()
+    st.session_state.setdefault("kisan_mitra_panel_open", True)
+    panel_open = bool(st.session_state["kisan_mitra_panel_open"])
+    launcher_label = {"Hindi": "किसान मित्र AI", "Hinglish": "Kisan Mitra AI", "English": "Kisan Mitra AI"}[language]
+    close_help = {"Hindi": "किसान मित्र AI बंद करें", "Hinglish": "Kisan Mitra AI band karein", "English": "Close Kisan Mitra AI"}[language]
+
+    # The assistant can be dismissed without losing its conversation, then restored
+    # from the compact launcher in the lower-right corner.
+    if not panel_open:
+        if st.button(launcher_label, icon=":material/smart_toy:", key="mitarr_panel_reopen"):
+            st.session_state["kisan_mitra_panel_open"] = True
+            st.rerun()
+        st.html(
+            "<style>"
+            ".st-key-mitarr_panel_reopen{position:fixed!important;right:1.35rem;bottom:1.35rem;z-index:1200!important;isolation:isolate;}"
+            ".st-key-mitarr_panel_reopen:before{content:'AI FARMING COMPANION';position:absolute;right:.25rem;bottom:calc(100% + .55rem);"
+            "padding:.26rem .52rem;border:1px solid rgba(34,113,68,.18);border-radius:999px;background:rgba(255,255,255,.92);"
+            "box-shadow:0 6px 18px rgba(17,82,48,.11);color:#2c7651;font:700 .57rem 'DM Mono',monospace;letter-spacing:.09em;white-space:nowrap;}"
+            ".st-key-mitarr_panel_reopen:after{content:'';position:absolute;right:.42rem;top:.28rem;width:10px;height:10px;border:2px solid #fff;border-radius:50%;"
+            "background:#f4bd4b;box-shadow:0 0 0 4px rgba(244,189,75,.2);z-index:2;pointer-events:none;}"
+            ".st-key-mitarr_panel_reopen button{min-height:64px!important;padding:0 1.2rem!important;border:1px solid rgba(255,255,255,.30)!important;"
+            "border-radius:21px!important;background:linear-gradient(125deg,#0d4f38 0%,#19734b 57%,#239463 100%)!important;color:#fff!important;"
+            "font-size:.92rem!important;font-weight:800!important;letter-spacing:.01em!important;box-shadow:0 16px 36px rgba(13,72,45,.32),inset 0 1px 0 rgba(255,255,255,.26)!important;"
+            "transition:transform .18s ease,box-shadow .18s ease!important;}"
+            ".st-key-mitarr_panel_reopen button:hover{transform:translateY(-3px) scale(1.015)!important;"
+            "background:linear-gradient(125deg,#0b472f,#176943 54%,#2b9d6a)!important;box-shadow:0 21px 40px rgba(13,72,45,.38)!important;}"
+            ".st-key-mitarr_panel_reopen button [data-testid='stIconMaterial']{display:grid!important;place-items:center!important;width:31px!important;height:31px!important;"
+            "margin-right:.18rem!important;border:1px solid rgba(255,255,255,.3)!important;border-radius:11px!important;background:rgba(255,255,255,.15)!important;font-size:18px!important;}"
+            "@media(max-width:800px){.st-key-mitarr_panel_reopen{right:.8rem;bottom:.85rem;}.st-key-mitarr_panel_reopen button{min-height:58px!important;padding:0 1rem!important;}.st-key-mitarr_panel_reopen:before{display:none;}}</style>"
+        )
+        return
+    st.html(
+        "<style>.st-key-mitarr_panel_close{position:absolute!important;right:.55rem;top:.55rem;z-index:12!important;}"
+        ".st-key-mitarr_panel_close button{min-width:34px!important;width:34px!important;height:34px!important;padding:0!important;border-radius:50%!important;"
+        "background:rgba(255,255,255,.94)!important;color:#1d5538!important;box-shadow:0 5px 14px rgba(17,63,38,.18)!important;}"
+        "@media(max-width:800px){.st-key-kisan_mitra_floating{position:fixed!important;left:.4rem!important;right:.4rem!important;bottom:.55rem!important;width:auto!important;max-height:calc(100dvh - 1.1rem)!important;overflow-y:auto!important;z-index:1050!important}}</style>"
+    )
     labels = {
         "Hindi": {
             "title": "किसान मित्र AI", "copy": "खेती, मौसम या पशु-चारा के बारे में पूछें।", "topic": "विषय", "general": "खेती / मिट्टी", "livestock": "भैंस / पशु चारा", "weather": "फसल + स्थानीय मौसम", "question": "अपना सवाल", "placeholder": "जैसे: दूध बढ़ाने के लिए भैंस को कौन-सा संतुलित चारा दें?", "send": "AI से पूछें", "voice": "आवाज़ से पूछें", "speak": "AI का जवाब आवाज़ में सुनें", "consent": "मौसम सलाह के लिए मेरा ज़िला और राज्य उपयोग करें", "warning": "बीमार पशु या आपात स्थिति में पशु चिकित्सक से तुरंत संपर्क करें।",
@@ -947,35 +1227,52 @@ def render_kisan_mitra_floating() -> None:
         },
     }[language]
     greeting = {
-        "Hindi": "नमस्ते! मैं मिटार हूँ। आज मैं आपकी कैसे मदद करूँ?",
-        "Hinglish": "Namaste! Main Mitarr hoon. Aaj main aapki kaise madad karun?",
-        "English": "Hello! I'm Mitarr. How can I help you today?",
+        "Hindi": "नमस्ते! मैं किसान मित्र हूँ। आज मैं आपकी कैसे मदद करूँ?",
+        "Hinglish": "Namaste! Main Kisan Mitra hoon. Aaj main aapki kaise madad karun?",
+        "English": "Hello! I'm Kisan Mitra. How can I help you today?",
     }[language]
     if chosen_language in LANGUAGE_CODES:
-        greeting = translated_ui_text("Hello! I am Mitarr. How can I help you today?")
+        greeting = translated_ui_text("Hello! I am Kisan Mitra. How can I help you today?")
     panel_copy = {
-        "Hindi": {"ready": "आपका खेती साथी", "quick": "इन सवालों से शुरू करें", "empty": "नीचे लिखें या माइक से बोलें।", "settings": "जवाब की सेटिंग", "listen": "मिटार की आवाज़ सुनें", "thinking": "मिटार जवाब तैयार कर रहा है...", "hearing": "आपकी आवाज़ समझी जा रही है...", "voice_hint": "माइक दबाएँ, बोलें और रिकॉर्डिंग भेजें।"},
+        "Hindi": {"ready": "आपका खेती साथी", "quick": "इन सवालों से शुरू करें", "empty": "नीचे लिखें या माइक से बोलें।", "settings": "जवाब की सेटिंग", "listen": "मित्र की आवाज़ सुनें", "thinking": "मित्र जवाब तैयार कर रहा है...", "hearing": "आपकी आवाज़ समझी जा रही है...", "voice_hint": "माइक दबाएँ, बोलें और रिकॉर्डिंग भेजें।"},
         "Hinglish": {"ready": "Aapka kheti saathi", "quick": "In sawaalon se shuru karein", "empty": "Neeche likhein ya mic se boliye.", "settings": "Jawab ki settings", "listen": "Mitarr ki awaaz sunein", "thinking": "Mitarr jawab taiyar kar raha hai...", "hearing": "Aapki awaaz samajhi ja rahi hai...", "voice_hint": "Mic dabayein, boliye aur recording bhejein."},
         "English": {"ready": "Your farming companion", "quick": "Start with a question", "empty": "Type below or use the microphone.", "settings": "Reply settings", "listen": "Hear Mitarr", "thinking": "Mitarr is preparing a reply...", "hearing": "Understanding your recording...", "voice_hint": "Tap the mic, speak, then send the recording."},
     }[language]
+    chat_ui = {
+        "Hindi": {"new": "नया चैट", "source": "स्रोत", "fallback": "AI उपलब्ध नहीं; सुरक्षित सामान्य जानकारी", "mic": "बोलें", "listen": "सुनें", "copy": "कॉपी", "copied": "कॉपी हो गया", "unsupported": "इस ब्राउज़र में बोलकर लिखना उपलब्ध नहीं है; नीचे टेक्स्ट लिखें।", "helpline": "📞 किसान कॉल सेंटर: 1800-180-1551", "disclaimer": "AI की सलाह की पुष्टि स्थानीय KVK से करें।", "listening": "सुन रहा हूँ…"},
+        "Hinglish": {"new": "Naya chat", "source": "Source", "fallback": "AI unavailable; safe general guidance", "mic": "Boliye", "listen": "Sunein", "copy": "Copy", "copied": "Copy ho gaya", "unsupported": "Is browser mein live mic nahi hai; neeche text likhein.", "helpline": "📞 Kisan Call Centre: 1800-180-1551", "disclaimer": "AI ki salah local KVK se confirm karein.", "listening": "Sun raha hoon…"},
+        "English": {"new": "New chat", "source": "Source", "fallback": "AI unavailable; safe general guidance", "mic": "Speak", "listen": "Listen", "copy": "Copy", "copied": "Copied", "unsupported": "Live speech input is not supported here; type below.", "helpline": "📞 Kisan Call Centre: 1800-180-1551", "disclaimer": "Confirm AI guidance with your local KVK.", "listening": "Listening…"},
+    }[language]
+    if chosen_language in LANGUAGE_CODES:
+        chat_ui = {key: translated_ui_text(value) for key, value in chat_ui.items()}
+    speech_lang = ("hi" if chosen_language in {"Hindi", "Hinglish"} else "en" if chosen_language == "English" else LANGUAGE_CODES.get(chosen_language, "hi")) + "-IN"
     messages_key = "kisan_mitra_ai_messages"
     st.session_state.setdefault(messages_key, [])
     messages = st.session_state[messages_key]
     quick_prompts = {
         "Hindi": {
-            "आज के मौसम में क्या करें?": "मेरे जिले के अगले कुछ दिनों के मौसम के अनुसार खेत में क्या सावधानी रखनी चाहिए?",
-            "भैंस के चारे की सलाह": "दूध उत्पादन के लिए भैंस को संतुलित चारे में क्या देना चाहिए?",
-            "बारिश के बाद खेत": "बारिश के बाद खेत में सबसे पहले क्या देखना और क्या करना चाहिए?",
+            "🌦️ मौसम": "मेरे जिले के अगले 5 दिन के मौसम में खेत में क्या सावधानी रखनी चाहिए?",
+            "💰 मंडी भाव": "मेरी फसल का आज का मंडी भाव कहाँ जाँचूँ?",
+            "🐛 कीट-रोग": "फसल में कीट या रोग दिखे तो पहले सुरक्षित क्या करें?",
+            "🌱 खाद": "बिना मिट्टी जाँच के खाद डालने से पहले क्या करें?",
+            "📋 सरकारी योजना": "मेरे लिए सरकारी कृषि योजनाएँ कहाँ जाँचूँ?",
+            "📞 किसान हेल्पलाइन": "किसान कॉल सेंटर का नंबर क्या है?",
         },
         "Hinglish": {
-            "Aaj ke mausam ki salah": "Mere district ke agle kuch din ke weather ke hisaab se khet mein kya savdhani rakhni chahiye?",
-            "Bhains ke chara ki salah": "Doodh production ke liye bhains ko balanced chara mein kya dena chahiye?",
-            "Baarish ke baad khet": "Baarish ke baad khet mein sabse pehle kya dekhna aur kya karna chahiye?",
+            "🌦️ Mausam": "Mere district ke agle 5 din ke mausam mein khet mein kya savdhani rakhein?",
+            "💰 Mandi bhaav": "Meri fasal ka aaj ka mandi bhaav kahan check karun?",
+            "🐛 Keeda-rog": "Fasal mein keeda ya rog dikhe toh pehle safe kya karun?",
+            "🌱 Khaad": "Soil test ke bina khaad se pehle kya check karun?",
+            "📋 Yojana": "Mere liye sarkari kheti schemes kahan check karun?",
+            "📞 Helpline": "Kisan Call Centre ka number kya hai?",
         },
         "English": {
-            "Weather advice": "What field precautions should I take based on the next few days of weather in my district?",
-            "Buffalo feed advice": "What should I include in a balanced buffalo ration to support milk production?",
-            "After rainfall": "What should I inspect and do first in my field after rainfall?",
+            "🌦️ Weather": "What precautions should I take for the next 5 days of weather in my district?",
+            "💰 Mandi price": "Where can I verify today's price for my crop and market?",
+            "🐛 Pest or disease": "What safe first steps should I take for a crop pest or disease?",
+            "🌱 Fertiliser": "What should I check before adding fertiliser without a soil test?",
+            "📋 Schemes": "Where can I check official farming schemes and eligibility?",
+            "📞 Helpline": "What is the Kisan Call Centre number?",
         },
     }[language]
     if chosen_language in LANGUAGE_CODES:
@@ -998,32 +1295,69 @@ def render_kisan_mitra_floating() -> None:
       <path d='M50 87 Q64 101 78 87' fill='none' stroke='#2b8b57' stroke-width='5'/>
       <g class='mitarr-hand'><path d='M95 101 Q111 88 109 68' fill='none' stroke='#e9eee1' stroke-width='13' stroke-linecap='round'/><path d='M108 69 Q105 54 108 47 M109 67 Q114 54 117 52 M109 69 Q119 62 120 61' fill='none' stroke='#c98759' stroke-width='6' stroke-linecap='round'/></g>
     </svg>"""
+    mascot_image_url = "data:image/svg+xml;base64," + base64.b64encode(mascot_svg.encode("utf-8")).decode("ascii")
 
     with st.container(border=True, key="kisan_mitra_floating", gap="xsmall"):
+        if st.button("", icon=":material/close:", key="mitarr_panel_close", help=close_help):
+            st.session_state["kisan_mitra_panel_open"] = False
+            st.rerun()
         st.html(
             f"""<section class='ai-float-hero' aria-label='{escape(labels['title'])}'>
             <div class='ai-float-title-row'><div><div class='ai-float-title'>{escape(labels['title'])}</div><div class='ai-float-status'><i></i>{escape(panel_copy['ready'])}</div></div></div>
-            <div class='mitarr-stage'>{mascot_svg}<div class='mitarr-bubble'><span class='mitarr-name'>MITARR</span>{escape(greeting)}</div></div>
+            <div class='mitarr-stage'><img class='mitarr-figure' src='{mascot_image_url}' alt='Mitarr farmer waving' /><div class='mitarr-bubble'><span class='mitarr-name'>MITARR</span>{escape(greeting)}</div></div>
             </section>"""
         )
-        if st.button(panel_copy["listen"], icon=":material/volume_up:", key="floating_ai_greeting_voice", width="content"):
-            speech, speech_error = api_call("POST", "/assistant/speak", headers={"X-Session-Token": token}, json={"text": greeting})
-            if speech_error or not speech or not speech.get("audio_base64"):
-                st.error(speech_error or "Voice playback is unavailable right now.")
-            else:
-                st.session_state["floating_ai_greeting_audio"] = str(speech["audio_base64"])
-        if greeting_audio := st.session_state.get("floating_ai_greeting_audio"):
-            st.audio(base64.b64decode(str(greeting_audio)), autoplay=True)
-            st.session_state.pop("floating_ai_greeting_audio", None)
-        quick_pick = None
-        if not messages:
-            st.caption(panel_copy["quick"])
-            quick_pick = st.pills("Quick questions", list(quick_prompts), key="floating_ai_quick_prompts", label_visibility="collapsed", width="stretch")
-        with st.container(key="ai_chat_history", height=165, border=False, autoscroll=True, gap="xxsmall"):
+        top_left, top_right = st.columns([2.2, 1], vertical_alignment="center")
+        with top_left:
+            # The floating panel can cover the page-level language selector on desktop.
+            # Keep both controls in sync so farmers can switch languages inside chat.
+            if st.session_state.get("mitarr_language") != chosen_language:
+                st.session_state["mitarr_language"] = chosen_language
+
+            def _choose_mitarr_language() -> None:
+                st.session_state["language"] = st.session_state["mitarr_language"]
+
+            st.selectbox(
+                tr("language"), list(LANGUAGE_LABELS), format_func=LANGUAGE_LABELS.get,
+                key="mitarr_language", label_visibility="collapsed",
+                on_change=_choose_mitarr_language,
+            )
+        with top_right:
+            if st.button(chat_ui["new"], icon=":material/add_comment:", key="floating_ai_new_chat", width="stretch"):
+                st.session_state[messages_key] = []
+                st.rerun()
+        MITARR_VOICE_CONTROLS(
+            key="mitarr_greeting_voice", width="stretch",
+            data={"mic": False, "copyHidden": True, "text": greeting, "lang": speech_lang,
+                  "listenLabel": chat_ui["listen"]},
+        )
+        retry_question: str | None = None
+        with st.container(key="ai_chat_history", height=180 if messages else 58, border=False, autoscroll=True, gap="xxsmall"):
             if messages:
-                for message in messages[-4:]:
+                for index, message in enumerate(messages[-20:]):
                     with st.chat_message(str(message["role"]), avatar=":material/smart_toy:" if message["role"] == "assistant" else ":material/agriculture:"):
                         st.write(str(message["content"]))
+                        st.caption(str(message.get("at", "")))
+                        if message["role"] == "assistant":
+                            if message.get("error") and st.button("↻ " + ("फिर भेजें" if language == "Hindi" else "Phir bhejein" if language == "Hinglish" else "Retry"), key=f"mitarr_retry_{index}_{len(messages)}"):
+                                retry_question = next((str(item["content"]) for item in reversed(messages[-20:][:index]) if item["role"] == "user"), None)
+                            if message.get("mode") == "fallback":
+                                st.caption(chat_ui["fallback"])
+                            elif message.get("mode") == "source_link":
+                                st.caption("लाइव जानकारी यहाँ नहीं ली गई; आधिकारिक साइट पर जाँचें।" if language == "Hindi" else "Live data was not fetched here; check the official site.")
+                            for source in message.get("sources", []):
+                                if isinstance(source, dict):
+                                    name = str(source.get("name", ""))
+                                    source_date = str(source.get("date", ""))
+                                    source_url = str(source.get("url", ""))
+                                    st.caption(f"{chat_ui['source']}: {name}" + (f" · {source_date}" if source_date else ""))
+                                    if source_url.startswith("https://"):
+                                        st.link_button(name + " ↗", source_url, width="content")
+                            MITARR_VOICE_CONTROLS(
+                                key=f"mitarr_reply_actions_{index}_{len(messages)}", width="stretch",
+                                data={"mic": False, "text": str(message["content"]), "lang": speech_lang,
+                                      "listenLabel": chat_ui["listen"], "copyLabel": chat_ui["copy"], "copied": chat_ui["copied"]},
+                            )
                         if message.get("audio"):
                             st.audio(base64.b64decode(str(message["audio"])), format=str(message.get("mime_type", "audio/wav")))
             else:
@@ -1031,51 +1365,79 @@ def render_kisan_mitra_floating() -> None:
         topic_labels = {labels["general"]: "general", labels["livestock"]: "livestock", labels["weather"]: "crop_weather"}
         selected_label = st.selectbox(labels["topic"], list(topic_labels), key="floating_ai_topic")
         request_type = topic_labels[selected_label]
-        weather_ok = request_type != "crop_weather" or st.checkbox(labels["consent"], key="floating_ai_weather_consent")
-        with st.expander(panel_copy["settings"]):
-            speak_reply = st.checkbox(labels["speak"], value=False, key="floating_ai_speak_reply")
-            st.caption(labels["warning"])
+        weather_ok = st.checkbox(labels["consent"], key="floating_ai_weather_consent")
 
-        def ask(question: str) -> None:
+        def ask(question: str, kind: str | None = None) -> None:
             clean_question = question.strip()
+            effective_type = kind or request_type
             if len(clean_question) < 2:
                 st.error(labels["question"])
                 return
-            if request_type == "crop_weather" and not weather_ok:
+            if effective_type == "crop_weather" and not weather_ok:
                 st.error(labels["consent"])
                 return
-            messages.append({"role": "user", "content": clean_question})
+            timestamp = datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%H:%M IST")
+            messages.append({"role": "user", "content": clean_question, "at": timestamp})
             with st.spinner(panel_copy["thinking"]):
-                advice, advice_error = api_call("POST", "/assistant/advice", headers={"X-Session-Token": token}, json={"question": clean_question, "language": chosen_language, "request_type": request_type})
+                advice, advice_error = api_call("POST", "/assistant/advice", headers={"X-Session-Token": token}, json={"question": clean_question, "language": chosen_language, "request_type": effective_type, "weather_consent": bool(weather_ok and effective_type == "crop_weather")})
             if advice_error or not advice:
-                messages.append({"role": "assistant", "content": advice_error or "AI answer unavailable."})
+                messages.append({"role": "assistant", "content": advice_error or "AI answer unavailable.", "at": timestamp, "mode": "fallback", "error": True})
             else:
                 answer = str(advice.get("answer", ""))
-                reply: dict[str, object] = {"role": "assistant", "content": answer}
-                if speak_reply:
-                    speech, speech_error = api_call("POST", "/assistant/speak", headers={"X-Session-Token": token}, json={"text": answer})
-                    if speech and not speech_error:
-                        reply["audio"] = str(speech.get("audio_base64", ""))
-                        reply["mime_type"] = str(speech.get("mime_type", "audio/wav"))
+                reply: dict[str, object] = {"role": "assistant", "content": answer, "at": timestamp,
+                                            "sources": advice.get("sources", []), "mode": advice.get("mode", "ai")}
+                if advice.get("weather"):
+                    days = advice["weather"].get("days", [])
+                    if days:
+                        reply["content"] = answer + "\n\n" + " · ".join(
+                            f"{day['date']}: {day.get('rain_mm', '?')} mm" for day in days[:5]
+                        )
                 messages.append(reply)
+            del messages[:-20]
             st.rerun()
 
-        if quick_pick:
-            ask(quick_prompts[str(quick_pick)])
-        chat_submission = st.chat_input(labels["placeholder"], accept_audio=True, max_chars=700, submit_mode="disable", key="floating_ai_chat_input")
-        st.caption(panel_copy["voice_hint"])
-        if chat_submission:
-            question = str(chat_submission.text or "").strip()
-            if chat_submission.audio:
-                recorded = chat_submission.audio
-                with st.spinner(panel_copy["hearing"]):
-                    transcript, transcript_error = api_call("POST", "/assistant/transcribe", headers={"X-Session-Token": token}, data={"language": chosen_language}, files={"audio": (recorded.name, recorded.getvalue(), recorded.type)})
-                if transcript_error or not transcript:
-                    st.error(transcript_error or "Voice transcription unavailable.")
-                else:
-                    question = " ".join(part for part in (question, str(transcript.get("transcript", ""))) if part)
-            if question:
-                ask(question)
+        if retry_question:
+            ask(retry_question)
+        st.caption(panel_copy["quick"])
+        quick_items = list(quick_prompts.items())
+        if messages:
+            quick_items = quick_items[:3] if request_type == "crop_weather" else quick_items[3:]
+        quick_choice = MITARR_QUICK_CHIPS(
+            key="mitarr_quick_chips", width="stretch",
+            data={"label": panel_copy["quick"], "items": [
+                {"label": label, "prompt": prompt,
+                 "kind": "crop_weather" if label == next(iter(quick_prompts)) else None}
+                for label, prompt in quick_items
+            ]},
+        )
+        if quick_choice and getattr(quick_choice, "choice", None):
+            selection = quick_choice.choice
+            ask(str(selection["prompt"]), selection.get("kind"))
+        with st.expander("📋 " + ("सरकारी योजनाएँ" if language == "Hindi" else "Sarkari yojana" if language == "Hinglish" else "Official schemes")):
+            schemes_file = ROOT / "data" / "schemes.json"
+            if schemes_file.is_file():
+                schemes = json.loads(schemes_file.read_text(encoding="utf-8"))
+                picked = st.selectbox("योजना / Scheme", [entry["name"] for entry in schemes], key="mitarr_scheme_select")
+                scheme = next(entry for entry in schemes if entry["name"] == picked)
+                st.write(str(scheme["benefit_hi"]) if language == "Hindi" else translated_ui_text(scheme["benefit"]))
+                st.caption("पात्रता और दस्तावेज़ के मौजूदा नियम आधिकारिक पोर्टल पर जाँचें।" if language == "Hindi" else translated_ui_text(scheme["eligibility"]))
+                st.link_button("आधिकारिक पोर्टल ↗" if language == "Hindi" else "Official portal ↗", scheme["link"], width="stretch")
+        st.markdown(f"[{chat_ui['helpline']}](tel:18001801551)")
+        st.caption(chat_ui["disclaimer"])
+    composed = MITARR_COMPOSER(
+        key="mitarr_composer", width="stretch",
+        data={
+            "lang": speech_lang,
+            "placeholder": labels["placeholder"],
+            "micLabel": chat_ui["mic"],
+            "sendLabel": labels["send"],
+            "unsupported": chat_ui["unsupported"],
+            "listening": chat_ui["listening"],
+            "offline": "इंटरनेट नहीं है; कनेक्शन आने पर दोबारा भेजें" if language == "Hindi" else "Internet nahi hai; connection aane par dobara bhejein" if language == "Hinglish" else "Offline: reconnect and send again",
+        },
+    )
+    if composed and getattr(composed, "question", None):
+        ask(str(composed.question))
 
 
 def render_account_and_lab_tools() -> None:
@@ -1280,7 +1642,8 @@ def render_account_and_lab_tools() -> None:
             with st.spinner("Kisan Mitra AI soch raha hai..."):
                 advice, advice_error = api_call(
                     "POST", "/assistant/advice", headers={"X-Session-Token": token},
-                    json={"question": clean_question, "language": language, "request_type": request_type},
+                    json={"question": clean_question, "language": language, "request_type": request_type,
+                          "weather_consent": bool(weather_ok and request_type == "crop_weather")},
                 )
             if advice_error or not advice:
                 messages.append({"role": "assistant", "content": advice_error or "AI answer unavailable."})
@@ -1415,17 +1778,18 @@ def render_farmer_activity_map() -> None:
             height=650,
         )
     with india_summary_column:
-        total_pm_kisan = sum(int(item.get("pm_kisan_beneficiaries", 0)) for item in items if isinstance(item, dict))
-        total_active = sum(int(item.get("active_farmers", 0)) for item in items if isinstance(item, dict))
-        summary_title = {"Hindi": "पूरे भारत का सार", "Hinglish": "All India summary", "English": "All India summary"}[language]
-        st.markdown(f"#### {summary_title}")
-        summary_labels = {
-            "Hindi": ("विवरण", "भारत", ["PM-KISAN", "सक्रिय MittiMitra किसान", "कृषि GVA", "मुख्य फसलें", "मिट्टी के प्रकार"], [f"{total_pm_kisan:,}", f"{total_active:,}", "17.8%", "अनाज, फल और सब्जियाँ", "जलोढ़, काली, लाल, लेटराइट"]),
-            "Hinglish": ("Detail", "Bharat", ["PM-KISAN", "Active MittiMitra farmers", "Agriculture GVA", "Key crops", "Soil types"], [f"{total_pm_kisan:,}", f"{total_active:,}", "17.8%", "Anaaj, phal aur sabziyan", "Alluvial, kaali, laal, laterite"]),
-            "English": ("Detail", "India", ["PM-KISAN", "Active MittiMitra farmers", "Agriculture GVA", "Key crops", "Soil types"], [f"{total_pm_kisan:,}", f"{total_active:,}", "17.8%", "Cereals, fruits & vegetables", "Alluvial, black, red, laterite"]),
-        }[language]
-        st.table({summary_labels[0]: summary_labels[2], summary_labels[1]: summary_labels[3]})
-        st.caption("PM-KISAN: 20th instalment snapshot • 04 Aug 2025")
+        with st.container(border=True, key="india_summary_card"):
+            total_pm_kisan = sum(int(item.get("pm_kisan_beneficiaries", 0)) for item in items if isinstance(item, dict))
+            total_active = sum(int(item.get("active_farmers", 0)) for item in items if isinstance(item, dict))
+            summary_title = {"Hindi": "पूरे भारत का सार", "Hinglish": "All India summary", "English": "All India summary"}[language]
+            st.markdown(f"#### {summary_title}")
+            summary_labels = {
+                "Hindi": ("विवरण", "भारत", ["PM-KISAN", "सक्रिय MittiMitra किसान", "कृषि GVA", "मुख्य फसलें", "मिट्टी के प्रकार"], [f"{total_pm_kisan:,}", f"{total_active:,}", "17.8%", "अनाज, फल और सब्जियाँ", "जलोढ़, काली, लाल, लेटराइट"]),
+                "Hinglish": ("Detail", "Bharat", ["PM-KISAN", "Active MittiMitra farmers", "Agriculture GVA", "Key crops", "Soil types"], [f"{total_pm_kisan:,}", f"{total_active:,}", "17.8%", "Anaaj, phal aur sabziyan", "Alluvial, kaali, laal, laterite"]),
+                "English": ("Detail", "India", ["PM-KISAN", "Active MittiMitra farmers", "Agriculture GVA", "Key crops", "Soil types"], [f"{total_pm_kisan:,}", f"{total_active:,}", "17.8%", "Cereals, fruits & vegetables", "Alluvial, black, red, laterite"]),
+            }[language]
+            st.table({summary_labels[0]: summary_labels[2], summary_labels[1]: summary_labels[3]})
+            st.caption("PM-KISAN: 20th instalment snapshot • 04 Aug 2025")
 
 
 def render_crop_disease_check() -> None:
@@ -1434,15 +1798,15 @@ def render_crop_disease_check() -> None:
     labels = {
         "Hindi": {
             "eyebrow": "03 / फसल स्वास्थ्य", "title": "फसल रोग जाँच", "copy": "फसल/पत्ते की साफ फोटो से शुरुआती AI संकेत देखें। नतीजा पक्की बीमारी की पुष्टि या दवा की सलाह नहीं है।",
-            "status": "मॉडल स्थिति", "not_ready": "भारतीय खेतों की लेबल वाली फोटो तैयार की गई हैं, लेकिन जाँच मॉडल अभी विश्वसनीय नहीं है। क्षेत्र-वार परीक्षण पूरा होने के बाद ही यह सुविधा चालू होगी।", "ready": "labelled crop-photo model तैयार है", "upload": "फसल या पत्ते की फोटो अपलोड करें", "preview": "इसी फोटो पर फसल-रोग जाँच चलेगी", "run": "फसल जाँच चलाएँ", "reading": "फोटो के दृश्य संकेत देखे जा रहे हैं...", "result": "फोटो का शुरुआती परिणाम", "match": "संभावित वर्ग", "crop": "फसल", "finding": "संकेत", "confidence": "विश्वास", "healthy": "सामान्य/स्वस्थ संकेत", "attention": "विशेषज्ञ से पुष्टि करें", "review": "इस confidence या गैर-स्वस्थ संकेत के लिए KVK/कृषि अधिकारी से फोटो और खेत की जाँच कराएँ।", "next": "सुरक्षित अगला कदम", "privacy": "फोटो का परिणाम बनने के बाद API उसे सेव नहीं करती।", "model": "मॉडल जानकारी", "training": "लोकल labelled-image similarity baseline", "unavailable": "फसल-रोग सेवा अभी उपलब्ध नहीं है।",
+            "status": "मॉडल स्थिति", "not_ready": "लेबल वाली फसल-फोटो उपलब्ध हैं, लेकिन जाँच मॉडल अभी तैयार नहीं है। सत्यापित मॉडल बनने के बाद ही यह सुविधा खुलेगी।", "ready": "AI crop-photo model तैयार है", "test": "टेस्ट सटीकता", "classes": "फसल/रोग वर्ग", "upload": "फसल या पत्ते की फोटो अपलोड करें", "preview": "इसी फोटो पर फसल-रोग जाँच चलेगी", "run": "फसल जाँच चलाएँ", "reading": "फोटो के दृश्य संकेत देखे जा रहे हैं...", "result": "फोटो का शुरुआती परिणाम", "match": "संभावित वर्ग", "crop": "फसल", "finding": "संकेत", "confidence": "विश्वास", "healthy": "सामान्य/स्वस्थ संकेत", "attention": "विशेषज्ञ से पुष्टि करें", "review": "इस confidence या गैर-स्वस्थ संकेत के लिए KVK/कृषि अधिकारी से फोटो और खेत की जाँच कराएँ।", "next": "सुरक्षित अगला कदम", "privacy": "फोटो का परिणाम बनने के बाद API उसे सेव नहीं करती।", "model": "मॉडल जानकारी", "training": "लोकल MobileNetV3 crop-image model", "unavailable": "फसल-रोग सेवा अभी उपलब्ध नहीं है।",
         },
         "Hinglish": {
             "eyebrow": "03 / fasal health", "title": "Crop disease check", "copy": "Fasal ya patte ki clear photo se initial AI signal dekhein. Yeh confirmed disease diagnosis ya dawa ki advice nahi hai.",
-            "status": "Model status", "not_ready": "Indian field photos prepare ho chuki hain, lekin model abhi reliable nahi hai. Region-wise testing ke baad hi yeh check live hoga.", "ready": "Labelled crop-photo model ready hai", "upload": "Fasal ya patte ki photo upload karein", "preview": "Isi photo par crop-disease check chalega", "run": "Crop check chalayen", "reading": "Photo ke visual signals padhe ja rahe hain...", "result": "Is photo ka initial result", "match": "Likely class", "crop": "Crop", "finding": "Signal", "confidence": "Confidence", "healthy": "Healthy / normal signal", "attention": "Expert confirmation needed", "review": "Is confidence ya non-healthy signal ke liye KVK/agriculture officer ko photo aur field dikhakar confirm karein.", "next": "Safe next step", "privacy": "Result banne ke baad API photo save nahi karti.", "model": "Model details", "training": "Local labelled-image similarity baseline", "unavailable": "Crop-disease service abhi available nahi hai.",
+            "status": "Model status", "not_ready": "Labelled crop photos available hain, lekin model abhi ready nahi hai. Verified model ke baad hi yeh check khulega.", "ready": "AI crop-photo model ready hai", "test": "Test accuracy", "classes": "Crop/disease classes", "upload": "Fasal ya patte ki photo upload karein", "preview": "Isi photo par crop-disease check chalega", "run": "Crop check chalayen", "reading": "Photo ke visual signals padhe ja rahe hain...", "result": "Is photo ka initial result", "match": "Likely class", "crop": "Crop", "finding": "Signal", "confidence": "Confidence", "healthy": "Healthy / normal signal", "attention": "Expert confirmation needed", "review": "Is confidence ya non-healthy signal ke liye KVK/agriculture officer ko photo aur field dikhakar confirm karein.", "next": "Safe next step", "privacy": "Result banne ke baad API photo save nahi karti.", "model": "Model details", "training": "Local MobileNetV3 crop-image model", "unavailable": "Crop-disease service abhi available nahi hai.",
         },
         "English": {
             "eyebrow": "03 / crop health", "title": "Crop disease check", "copy": "Use a clear crop or leaf photo for an initial AI signal. This is not a confirmed disease diagnosis or pesticide advice.",
-            "status": "Model status", "not_ready": "Labelled Indian field photos are prepared, but the model is not yet reliable. This check will open only after region-wise validation.", "ready": "Labelled crop-photo model is ready", "upload": "Upload a crop or leaf photo", "preview": "This photo will be used for the crop-disease check", "run": "Run crop check", "reading": "Reading visual signals from the photo...", "result": "Initial result for this photo", "match": "Likely class", "crop": "Crop", "finding": "Signal", "confidence": "Confidence", "healthy": "Healthy / normal signal", "attention": "Expert confirmation needed", "review": "For this confidence or non-healthy signal, confirm the photo and field condition with a KVK or agriculture officer.", "next": "Safe next step", "privacy": "The API does not save the photo after returning its result.", "model": "Model details", "training": "Local labelled-image similarity baseline", "unavailable": "The crop-disease service is currently unavailable.",
+            "status": "Model status", "not_ready": "Labelled crop photos are available, but the model is not ready yet. This check opens after a verified model is available.", "ready": "AI crop-photo model is ready", "test": "Test accuracy", "classes": "Crop/disease classes", "upload": "Upload a crop or leaf photo", "preview": "This photo will be used for the crop-disease check", "run": "Run crop check", "reading": "Reading visual signals from the photo...", "result": "Initial result for this photo", "match": "Likely class", "crop": "Crop", "finding": "Signal", "confidence": "Confidence", "healthy": "Healthy / normal signal", "attention": "Expert confirmation needed", "review": "For this confidence or non-healthy signal, confirm the photo and field condition with a KVK or agriculture officer.", "next": "Safe next step", "privacy": "The API does not save the photo after returning its result.", "model": "Model details", "training": "Local MobileNetV3 crop-image model", "unavailable": "The crop-disease service is currently unavailable.",
         },
     }[language]
     token = st.session_state.get("session_token", "")
@@ -1457,6 +1821,8 @@ def render_crop_disease_check() -> None:
             st.caption(labels["status"])
             if status and bool(status.get("ready")):
                 st.success(labels["ready"])
+                if status.get("test_accuracy") is not None:
+                    st.caption(f"{labels['test']}: {float(status['test_accuracy']):.1f}% • {int(status.get('class_count', 0))} {labels['classes']}")
             else:
                 st.warning(labels["unavailable"])
 
@@ -1477,7 +1843,9 @@ def render_crop_disease_check() -> None:
             )
             submitted = st.form_submit_button(labels["run"], icon="🌿", type="primary", width="stretch")
         if crop_photo:
-            st.image(crop_photo, caption=labels["preview"], width="stretch")
+            preview_column, _ = st.columns([1, 2.2])
+            with preview_column:
+                st.image(crop_photo, caption=labels["preview"], width=420)
         if submitted:
             if crop_photo is None:
                 st.warning(labels["upload"])
@@ -1498,18 +1866,20 @@ def render_crop_disease_check() -> None:
         if isinstance(result, dict):
             st.divider()
             st.markdown(f"#### {labels['result']}")
-            result_columns = st.columns(4)
-            result_columns[0].metric(labels["match"], str(result.get("label", "-")))
-            result_columns[1].metric(labels["crop"], str(result.get("crop", "-")))
-            result_columns[2].metric(labels["finding"], str(result.get("finding", "-")))
-            result_columns[3].metric(labels["confidence"], f"{float(result.get('confidence_percent', 0)):.1f}%")
+            crop_column, finding_column, confidence_column = st.columns([1, 1.8, .7])
+            crop = localized_disease_value(str(result.get("crop", "-")))
+            finding = localized_disease_value(str(result.get("finding", "-")))
+            crop_column.metric(labels["crop"], crop)
+            finding_column.metric(labels["finding"], finding)
+            confidence_column.metric(labels["confidence"], f"{float(result.get('confidence_percent', 0)):.1f}%")
+            st.caption(f"{labels['match']}: {crop} — {finding}")
             if bool(result.get("healthy")) and not bool(result.get("needs_expert_review")):
                 st.success(labels["healthy"])
             else:
                 st.warning(labels["attention"])
                 st.caption(labels["review"])
-            st.info(f"**{labels['next']}:** {result.get('next_step', '')}")
-            st.caption(f"{labels['model']}: {labels['training']} • {result.get('model_note', '')}")
+            st.info(f"**{labels['next']}:** {localized_crop_disease_next_step(bool(result.get('healthy')))}")
+            st.caption(f"{labels['model']}: {labels['training']}")
             st.caption(labels["privacy"])
 
 

@@ -10,7 +10,9 @@ been placed locally and trained by the project owner.
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -20,6 +22,8 @@ from PIL import Image, UnidentifiedImageError
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 DEFAULT_MODEL_PATH = Path(os.getenv("CROP_DISEASE_MODEL_PATH", "artifacts/crop_disease_baseline.npz"))
+CNN_MODEL_PATH = Path(os.getenv("CROP_DISEASE_CNN_MODEL_PATH", "artifacts/crop_disease_mobilenetv3.onnx"))
+CNN_METADATA_PATH = Path(os.getenv("CROP_DISEASE_CNN_METADATA_PATH", str(CNN_MODEL_PATH.with_suffix(".json"))))
 MIN_SAMPLES_PER_CLASS = 3
 
 
@@ -65,15 +69,58 @@ def _class_folders(dataset_dir: Path) -> list[Path]:
 
 
 def _display_label(raw_label: str) -> str:
-    return raw_label.replace("___", " - ").replace("_", " ").strip()
+    text = re.sub(r"\s+", " ", raw_label.replace("___", " - ").replace("_", " ")).strip()
+    corrections = {
+        "Becterial": "Bacterial",
+        "thirps": "Thrips",
+        "Brownspot": "Brown spot",
+        "RedRot": "Red rot",
+        "RedRust": "Red rust",
+    }
+    for source, replacement in corrections.items():
+        text = re.sub(rf"\b{re.escape(source)}\b", replacement, text, flags=re.IGNORECASE)
+    return text
 
 
 def _label_parts(raw_label: str) -> tuple[str, str, bool]:
-    parts = raw_label.replace("___", "|", 1).split("|", 1)
-    crop = parts[0].replace("_", " ").strip()
-    finding = (parts[1] if len(parts) > 1 else raw_label).replace("_", " ").strip()
-    healthy = "healthy" in raw_label.lower()
-    return crop, finding, healthy
+    """Split both standard and human-named Kaggle class folders safely.
+
+    Datasets often use ``Crop___Disease`` but the imported Indian dataset also
+    has labels such as ``Becterial Blight in Rice`` and ``Wheat black rust``.
+    Never guess a crop when a class name does not actually name one.
+    """
+    label = _display_label(raw_label)
+    healthy = "healthy" in label.lower()
+    if "___" in raw_label:
+        crop, finding = (_display_label(part) for part in raw_label.split("___", 1))
+        return crop, finding, healthy
+
+    # PlantVillage labels use a human-readable ``Crop - Disease`` format.
+    # Split it before the fallback crop-name search so labels such as
+    # ``Corn (Maize) - Northern Leaf Blight`` never become ``Corn ()``.
+    if " - " in label:
+        crop, finding = (part.strip() for part in label.split(" - ", 1))
+        crop = {"Corn (Maize)": "Maize", "Bell Pepper": "Bell pepper"}.get(crop, crop)
+        return crop, "Healthy" if healthy else finding, healthy
+
+    relation = re.match(r"^(?P<finding>.+?)\s+(?:in|on)\s+(?P<crop>[A-Za-z ]+)$", label, flags=re.IGNORECASE)
+    if relation:
+        return relation.group("crop").strip().title(), relation.group("finding").strip(), healthy
+
+    crop_names = {
+        "sugarcane": "Sugarcane", "cotton": "Cotton", "rice": "Rice",
+        "maize": "Maize", "wheat": "Wheat", "tomato": "Tomato",
+        "potato": "Potato", "apple": "Apple",
+    }
+    for key, display in crop_names.items():
+        match = re.search(rf"\b{key}\b", label, flags=re.IGNORECASE)
+        if match:
+            finding = (label[:match.start()] + label[match.end():]).strip(" -")
+            if healthy:
+                finding = "Healthy"
+            return display, finding or label, healthy
+
+    return "Unspecified crop", "Healthy" if healthy else label, healthy
 
 
 def train_crop_disease_classifier(
@@ -140,8 +187,44 @@ def train_crop_disease_classifier(
     }
 
 
+def _cnn_metadata() -> dict[str, object] | None:
+    """Return approved CNN metadata when a promoted ONNX model is present."""
+    if not CNN_MODEL_PATH.exists() or not CNN_METADATA_PATH.exists():
+        return None
+    try:
+        metadata = json.loads(CNN_METADATA_PATH.read_text(encoding="utf-8"))
+        if not isinstance(metadata.get("classes"), list) or not metadata["classes"]:
+            return None
+        return metadata
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def _cnn_status() -> dict[str, object] | None:
+    metadata = _cnn_metadata()
+    if metadata is None:
+        return None
+    try:
+        import onnxruntime as ort
+        ort.InferenceSession(str(CNN_MODEL_PATH), providers=["CPUExecutionProvider"])
+    except (ImportError, OSError, ValueError) as error:
+        return {"ready": False, "message": f"CNN model is present but unavailable: {error}"}
+    return {
+        "ready": True,
+        "class_count": len(metadata["classes"]),
+        "image_count": int(metadata.get("train_images", 0)),
+        "trained_at": str(metadata.get("created_at", "")),
+        "model_type": "MobileNetV3 transfer-learning candidate",
+        "validation_accuracy": float(metadata.get("best_validation_accuracy", 0)) * 100,
+        "test_accuracy": float(metadata.get("test_accuracy", 0)) * 100,
+    }
+
+
 def crop_disease_model_status(model_path: str | Path = DEFAULT_MODEL_PATH) -> dict[str, object]:
     """Return safe model metadata without exposing training images or paths to users."""
+    cnn = _cnn_status()
+    if cnn is not None:
+        return cnn
     path = Path(model_path)
     if not path.exists():
         return {
@@ -173,6 +256,8 @@ def predict_crop_disease(
     status = crop_disease_model_status(model_path)
     if not status.get("ready"):
         raise RuntimeError(str(status["message"]))
+    if status.get("model_type") == "MobileNetV3 transfer-learning candidate":
+        return _predict_cnn_crop_disease(image_path, minimum_confidence)
     with np.load(Path(model_path), allow_pickle=False) as saved:
         class_names = np.asarray(saved["class_names"], dtype=str)
         feature_mean = np.asarray(saved["feature_mean"], dtype=np.float32)
@@ -205,6 +290,40 @@ def predict_crop_disease(
         "minimum_confidence_percent": confidence_floor,
         "next_step": next_step,
         "model_note": "Preliminary visual classification from a locally trained labelled-image baseline; it is not a confirmed diagnosis.",
+    }
+
+
+def _predict_cnn_crop_disease(image_path: str | Path, minimum_confidence: int | None) -> dict[str, object]:
+    """Run a promoted ONNX MobileNetV3 model, keeping the same safe response contract."""
+    import onnxruntime as ort
+
+    metadata = _cnn_metadata()
+    if metadata is None:
+        raise RuntimeError("CNN metadata could not be read.")
+    size = int(metadata.get("image_size", 224))
+    normalization = metadata.get("normalization", {})
+    means = np.asarray(normalization.get("mean", [0.485, 0.456, 0.406]), dtype=np.float32).reshape(1, 1, 3)
+    deviations = np.asarray(normalization.get("std", [0.229, 0.224, 0.225]), dtype=np.float32).reshape(1, 1, 3)
+    with Image.open(image_path) as source:
+        image = source.convert("RGB").resize((size, size), Image.Resampling.BILINEAR)
+        values = np.asarray(image, dtype=np.float32) / 255.0
+    tensor = ((values - means) / deviations).transpose(2, 0, 1)[None, ...].astype(np.float32)
+    session = ort.InferenceSession(str(CNN_MODEL_PATH), providers=["CPUExecutionProvider"])
+    logits = np.asarray(session.run(None, {session.get_inputs()[0].name: tensor})[0][0], dtype=np.float64)
+    scores = np.exp(logits - logits.max())
+    probabilities = scores / scores.sum()
+    index = int(np.argmax(probabilities))
+    raw_label = str(metadata["classes"][index])
+    crop, finding, healthy = _label_parts(raw_label)
+    confidence = round(float(probabilities[index] * 100), 1)
+    confidence_floor = minimum_confidence or int(os.getenv("CROP_DISEASE_MIN_CONFIDENCE", "65"))
+    needs_review = confidence < confidence_floor or not healthy
+    return {
+        "label": _display_label(raw_label), "crop": crop, "finding": finding, "healthy": healthy,
+        "confidence_percent": confidence, "needs_expert_review": needs_review,
+        "minimum_confidence_percent": confidence_floor,
+        "next_step": "This is an early visual indication. Do not choose a pesticide or dosage from this result alone; show the crop and photo to a KVK, agriculture officer, or qualified agronomist.",
+        "model_note": "Preliminary MobileNetV3 visual classification. PlantVillage validation is not a field-diagnosis claim.",
     }
 
 
