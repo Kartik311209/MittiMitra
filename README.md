@@ -1,140 +1,257 @@
-# Soil NPK Analysis Using AI & ML
+<div align="center">
 
-Public preview: [MittiMitra on Vercel](https://mittimitra-web.vercel.app/).
-The static landing page is in [`web/`](web/).
-It is intentionally separate from the farmer portal. The portal needs a
-container host, persistent database/uploads, real SMS OTP, and HTTPS before a
-public launch; local screen OTP is for development only.
-For the complete single-port portal and a password-protected, disposable test
-deployment, see [HOSTING.md](HOSTING.md).
+<img src="assets/logo.png" alt="MittiMitra Logo" width="120" />
 
-A synthetic-data MVP that estimates Nitrogen (N), Phosphorus (P), and Potassium (K) from a soil image. It is designed so future field images and matching laboratory reports can be used with the same training contract.
+# 🌱 MittiMitra — Farmer Support & Soil Intelligence Portal
 
-> **Scientific limitation:** camera RGB images cannot replace laboratory nutrient testing. The included model learns deliberately created relationships in synthetic images, so its outputs are prototype estimates only.
+**AI-powered soil NPK analysis · Farmer login with OTP · Kisan Mitra AI assistant · Government scheme updates**
 
-## Features
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat&logo=python&logoColor=white)](https://python.org)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.62-FF4B4B?style=flat&logo=streamlit&logoColor=white)](https://streamlit.io)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat)](LICENSE)
 
-- Reproducible synthetic soil image and label generator
-- Actual multi-output ML baseline predicting N, P, and K in kg/ha
-- Explainable low/medium/high nutrient flags and conservative demo recommendations
-- Streamlit dashboard and FastAPI prediction endpoint
-- Stable CSV schema for future lab-validated data
-- Farmer profile login: name, age, land area/unit, village, district, city, state and mobile OTP
-- Persistent SQLite storage for farmer records and uploaded soil photos
-- Automatic retraining after enough uploaded images have **certified laboratory N/P/K labels**
+🌐 **Live Demo:** [mittimitra-web.vercel.app](https://mittimitra-web.vercel.app/)
 
-## Setup
+</div>
+
+---
+
+## 📖 What is MittiMitra?
+
+**MittiMitra** ("Friend of the Soil") is an academic prototype farmer-support portal built for Indian farmers. It brings together soil testing, scheme discovery, AI assistance, and land-lease support in one place — with full support for **Hindi, Hinglish, and English**.
+
+> ⚠️ **Scientific Note:** Camera RGB images cannot replace lab nutrient testing. The included NPK model is trained on synthetic data and its output is a **prototype estimate only**, not a certified result.
+
+---
+
+## ✨ Features
+
+| Feature | Description |
+|---|---|
+| 🔐 **OTP Farmer Login** | Register & log in with Indian mobile number + short-lived OTP |
+| 🪴 **Soil NPK Analysis** | Upload a soil photo → get prototype N, P, K & moisture estimates |
+| 🧪 **Lab Verification Workflow** | Attach certified lab values to trigger automatic model retraining |
+| 🤖 **Kisan Mitra AI** | Gemini-powered farming assistant with voice, Hindi, and quick-chip support |
+| 🌦️ **Weather Guidance** | Consent-based 5-day forecast via Open-Meteo |
+| 📜 **Government Schemes** | National & state-specific scheme updates with optional SMS opt-in |
+| 🗺️ **India Address Dropdowns** | State → District → Tehsil → Village using official LGD data |
+| 🌿 **Crop Disease Check** | Photo-based preliminary crop disease detection (model training required) |
+| 📊 **Admin Portal** | Scheme management behind an admin key |
+| 🏡 **Land Lease Marketplace** | Browse/list land-lease interest (no payment or legal transfer) |
+
+---
+
+## 🏗️ Architecture
+
+```
+Farmer Browser
+      │
+      ▼
+Streamlit Dashboard  (port 8501)
+      │  HTTP + session token
+      ▼
+FastAPI Backend      (port 8000)
+      ├── SQLite        — farmer profiles, OTPs, sessions, records
+      ├── Local FS      — soil image uploads, lab labels, model files
+      ├── NumPy/Pillow  — image feature extraction & NPK prediction
+      ├── Twilio        — real SMS OTP & scheme notifications (optional)
+      ├── Google Gemini — Kisan Mitra AI assistant
+      └── Open-Meteo   — consent-based weather forecasts
+```
+
+---
+
+## 🚀 Quick Start (Local)
+
+### 1. Prerequisites
+- Python 3.12+
+- PowerShell (Windows) or bash (Linux/macOS)
+
+### 2. Setup
 
 ```powershell
+# Clone the repo
+git clone https://github.com/Kartik311209/MittiMitra.git
+cd MittiMitra
+
+# Create virtual environment
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1          # Windows
+# source .venv/bin/activate           # Linux/macOS
+
 pip install -r requirements.txt
 $env:PYTHONPATH = "$PWD\src"
 ```
 
-## Run the MVP
+### 3. Generate synthetic data & train
 
 ```powershell
 python -m soil_npk.generator --samples 800
 python -m soil_npk.training
+```
+
+### 4. Run the app
+
+**Terminal 1 — Dashboard:**
+```powershell
 python -m streamlit run dashboard.py
 ```
 
-In a second terminal, run the backend before using the dashboard login/upload flow:
-
+**Terminal 2 — API backend:**
 ```powershell
 uvicorn soil_npk.api:app --reload
 ```
 
-Visit `http://127.0.0.1:8000/docs` to test the API.
+- Dashboard: `http://localhost:8501`
+- API docs: `http://localhost:8000/docs`
 
-## Run with Docker
+---
 
-Docker Desktop must be running. Build and start both the dashboard and API:
+## 🐳 Docker (Recommended)
 
 ```powershell
 Copy-Item .env.example .env
+# Edit .env with your keys (see OTP section below)
 docker compose up --build
 ```
 
-Open `http://localhost:8501`. The API docs are at `http://localhost:8000/docs`.
+- Dashboard: `http://localhost:8501`
+- API docs: `http://localhost:8000/docs`
 
-### Mitarr farmer assistant (adapted to Streamlit + FastAPI)
+---
 
-The assistant is embedded in the logged-in dashboard; it does not replace farmer accounts or the soil tools. It has Hindi/Hinglish/English controls, the portal's additional Indian-language selector, short quick questions, reply copy/listen buttons, browser speech input where supported, a text fallback, a visible Kisan Call Centre link, and a 10-scheme official-link directory. Browser speech is only offered when `SpeechRecognition` is available and permission is given. The API uses the server-side `GEMINI_API_KEY`; never put that key in browser code. On an AI error or an 8-second timeout, it returns a clearly marked safe fallback instead of a blank answer.
+## 🔑 Environment Variables
 
-The 7 conservative crop notes in `data/kb/` are general decision aids, not a regional sowing calendar or verified pesticide-label database. To add a crop, create `data/kb/<crop>.md` and add its aliases in `src/soil_npk/assistant_service.py`. To add a scheme, edit `data/schemes.json` with a current official link and caveated eligibility; the portal does not decide a farmer's eligibility. This is a small context lookup, **not** vector-search RAG.
+Copy `.env.example` to `.env` and configure:
 
-Weather is requested only after district/state consent; the 5-day figures come from Open-Meteo and include dates and a source. A short forecast is not a seasonal crop-profit prediction. Mandi prices are **not yet integrated**: the assistant links to the official AGMARKNET portal and will not display an invented or undated price. The current Streamlit chat also does not promise an offline auto-send queue or saved browser history; a reliable offline-first client would require a separately tested front-end component. If you add those later, account for shared-device privacy. The crop-disease photo model remains a separate untrained feature.
+```env
+# OTP delivery — use 'screen' for local dev, 'twilio' for production
+OTP_DELIVERY_MODE=screen
 
-Quick test without starting the server:
+# Required for production SMS OTP
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=your_auth_token
+TWILIO_VERIFY_SERVICE_SID=VAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# AI assistant
+GEMINI_API_KEY=your_gemini_api_key
+
+# Admin portal
+SCHEME_ADMIN_KEY=your_secret_admin_key
+```
+
+> 🛡️ **Never commit your `.env` file.** It is already listed in `.gitignore`.
+
+---
+
+## 📱 OTP Modes
+
+| Mode | When to use | How it works |
+|---|---|---|
+| `screen` | Local development | OTP appears as a yellow banner on the dashboard — no SMS sent |
+| `twilio` | Production | Real SMS sent to farmer's mobile via Twilio Verify |
+
+---
+
+## 🧪 Run Tests
 
 ```powershell
 $env:PYTHONPATH = "$PWD\src"
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-In the portal: log in with a permitted test account, ask a crop question, try the mic where the browser supports speech recognition (otherwise type in the chat bar), tap Listen/Copy on the reply, check the scheme directory, and verify the Kisan Call Centre link. Do not enter personal IDs or real farmer data in a disposable demo.
+---
 
-For local, free testing, set `OTP_DELIVERY_MODE=screen` in `.env`: the short-lived OTP appears only on the local dashboard and no SMS is sent. Never use this mode on a public deployment. Real SMS OTP uses Twilio Verify: set `OTP_DELIVERY_MODE=twilio`, create a Verify Service, put its Account SID, Auth Token and Verify Service SID in `.env`, then restart the API container. Keep `.env` private and serve a public deployment over HTTPS.
+## 📂 Project Layout
 
-Farmers can separately opt in to government-scheme SMS updates and choose small-landholder updates. An opt-in confirmation is sent through the configured Twilio Messaging Service. An admin can publish a verified official update through `POST /admin/scheme-notifications` using the `X-Scheme-Admin-Key` header. The app never labels someone as poor from land size, and it never promises scheme eligibility; each scheme's official rules determine that.
+```
+MittiMitra/
+├── dashboard.py              # Streamlit UI (farmer portal + admin)
+├── hosted_app.py             # Single-port ASGI entry for Render deployment
+├── src/soil_npk/
+│   ├── api.py                # FastAPI routes (OTP, upload, farmer, schemes)
+│   ├── farmer_service.py     # OTP logic, farmer CRUD, lab-label workflow
+│   ├── assistant_service.py  # Kisan Mitra AI (Gemini + weather + KB)
+│   ├── model.py              # NPK prediction model
+│   ├── training.py           # Model retraining pipeline
+│   ├── crop_disease.py       # Crop disease baseline
+│   └── locations.py          # LGD address data
+├── data/
+│   ├── kb/                   # Crop knowledge base markdown files
+│   ├── schemes.json          # Government scheme directory
+│   └── locations/            # LGD district/tehsil/village data
+├── artifacts/                # Trained model files (git-ignored)
+├── web/                      # Static landing page (Vercel)
+├── Dockerfile
+├── docker-compose.yml
+└── requirements.txt
+```
 
-### India address dropdowns
+---
 
-The registration order is **State → District/City → Tehsil → Village**. States and UTs are built in; the lower levels are served from a server-side copy of the Government of India Local Government Directory (LGD), rather than bundling hundreds of thousands of village names in the browser. Follow [data/locations/README.md](data/locations/README.md) once to import the official current export. The LGD directory is maintained by the Ministry of Panchayati Raj and its current catalogue is published on the [Government of India OGD platform](https://data.gov.in/catalog/local-government-directory-lgd).
+## 🛠️ Tech Stack
 
-### Upload and automatic learning
+| Technology | Purpose |
+|---|---|
+| Python 3.12 | Core backend runtime |
+| Streamlit | Farmer & admin web interface |
+| FastAPI + Uvicorn | REST API, file uploads, protected routes |
+| SQLite | Local database (farmers, sessions, records) |
+| NumPy + Pillow | Image features & prototype NPK model |
+| Docker Compose | Multi-service local & production deployment |
+| OpenPyXL | India LGD district/village workbook import |
+| Twilio Verify | Real SMS OTP & scheme notifications |
+| Google Gemini | Kisan Mitra AI assistant |
+| Open-Meteo | Consent-based weather forecast |
 
-Every soil image upload is saved under `data/app_data/uploads/` with the farmer account and the model prediction. It is **not** used as NPK training data just because it is a photo: a photo has no ground-truth nutrient value. When a certified lab report is entered for that same sample, the server exports it to the training dataset. At 20 verified image + lab-report samples (configurable with `MIN_LABELED_SAMPLES`), every new verified result automatically retrains and replaces the baseline model.
+---
 
-This protects farmers from a misleading feedback loop where an earlier photo estimate is treated as if it were a real lab result.
+## 🌿 Crop Disease Check
 
-### Crop disease check (labelled-photo baseline)
+After login, farmers can upload a crop photo for preliminary disease detection. The feature is intentionally **disabled until a validated model** is available.
 
-After login, farmers also have a **Crop disease check**. It accepts one JPG,
-PNG or WEBP crop photo and displays the predicted labelled class, confidence,
-and a safe next step directly below that photo. The temporary crop photo is
-deleted by the API after the response; it is not silently added to the NPK
-training set.
-
-The feature deliberately stays unavailable until a crop-photo model has been
-trained and validated on relevant field images. Five Indian field-photo source
-archives have been prepared locally for research; they do **not** cover all
-Indian crops or agro-climatic zones. Their origin, label limitations, licence
-notes and candidate training/evaluation commands are documented in
-[data/crop_disease/README.md](data/crop_disease/README.md).
-
-For a research-only candidate that does not activate the portal, run:
+To train a candidate model (research only — does not activate the portal):
 
 ```powershell
 $env:PYTHONPATH = "$PWD\src"
-.\.venv\Scripts\python.exe -m soil_npk.crop_disease --dataset-dir .\data\crop_disease\prepared --model-path .\artifacts\crop_disease_candidate.npz
-.\.venv\Scripts\python.exe -m soil_npk.evaluate_crop_disease --model-path .\artifacts\crop_disease_candidate.npz --test-dir .\data\crop_disease\prepared\test --report-path .\artifacts\crop_disease_candidate_evaluation.json
+.\.venv\Scripts\python.exe -m soil_npk.crop_disease `
+    --dataset-dir .\data\crop_disease\prepared `
+    --model-path .\artifacts\crop_disease_candidate.npz
 ```
 
-The supplied model is a transparent image-similarity baseline, not a confirmed
-disease diagnosis. Low-confidence and non-healthy results must be verified by
-a KVK, agriculture officer, or qualified agronomist; the app never recommends
-a pesticide or dosage from a photo alone.
+> Low-confidence results must be verified by a KVK, agriculture officer, or qualified agronomist. The app **never** recommends a pesticide or dosage from a photo.
 
-## Future real-data migration
+---
 
-Create a CSV with at least these columns:
+## 🔭 Future Scope
 
-```text
-image_path,nitrogen_kg_ha,phosphorus_kg_ha,potassium_kg_ha
-```
+- [ ] Train & validate crop-disease model on India-relevant Kaggle field images
+- [ ] Integrate verified Indian SMS route for OTP + scheme SMS
+- [ ] Migrate SQLite → managed PostgreSQL with backups
+- [ ] Add role-based admin accounts, audit logging, and rate limiting
+- [ ] HTTPS production deployment with farmer data privacy/deletion policy
+- [ ] Mandi price integration (currently links to AGMARKNET)
+- [ ] Offline-first mobile client with queued form submissions
 
-`image_path` is relative to the CSV file. Optional fields are `sample_id`, `soil_type`, `ph`, `moisture_percent`, `district`, and `collection_date`. Do not merge a future real set into the synthetic test split: keep an untouched, field-level test set and report its MAE before making any accuracy claim.
+---
 
-For real data, replace the handcrafted baseline with transfer learning (for example EfficientNet) while keeping the API response and CSV contract unchanged. Fine-tune only after images are paired with certified lab values.
+## 📄 License
 
-## Project layout
+This project is an **academic prototype** built for demonstration purposes.
 
-```text
-src/soil_npk/       generator, features, model, training, API
-data/synthetic/     generated images and labels (ignored by git)
-artifacts/          trained model file (ignored by git)
-dashboard.py        user interface
-```
+---
+
+## 🙏 Acknowledgements
+
+- [Government of India LGD](https://data.gov.in/catalog/local-government-directory-lgd) — district, tehsil & village data
+- [Open-Meteo](https://open-meteo.com/) — free weather forecast API
+- [Streamlit](https://streamlit.io) — rapid UI for Python
+- Kisan Call Centre — 1800-180-1551
+
+---
+
+<div align="center">
+Made with ❤️ for Indian farmers &nbsp;·&nbsp; <a href="https://mittimitra-web.vercel.app/">Live Demo</a>
+</div>

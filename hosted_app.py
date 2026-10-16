@@ -109,10 +109,14 @@ async def lifespan(_app):
     """Prepare an empty persistent volume before accepting farmer requests."""
     if os.getenv("PUBLIC_DEPLOYMENT", "0") == "1":
         mode = os.getenv("OTP_DELIVERY_MODE", "twilio").strip().lower()
+        public_screen_demo = os.getenv("PUBLIC_SCREEN_OTP_DEMO", "0") == "1"
         required = ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_VERIFY_SERVICE_SID")
         if os.getenv("DEMO_MODE") == "1":
             if mode != "screen" or len(os.getenv("DEMO_ACCESS_PASSWORD", "")) < 16:
                 raise RuntimeError("Private demo requires screen OTP and a 16+ character access password.")
+        elif public_screen_demo:
+            if mode != "screen":
+                raise RuntimeError("PUBLIC_SCREEN_OTP_DEMO requires OTP_DELIVERY_MODE=screen.")
         elif mode != "twilio" or any(not os.getenv(key) for key in required):
             raise RuntimeError("Public farmer login requires real SMS OTP credentials.")
         if not os.getenv("SCHEME_ADMIN_KEY"):

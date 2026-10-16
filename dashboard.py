@@ -127,6 +127,11 @@ if os.getenv("DEMO_MODE") == "1":
         "OTP screen par dikhega; real naam, phone, ya personal photo upload na karein. "
         "Demo data server restart par mit sakta hai."
     )
+elif os.getenv("PUBLIC_SCREEN_OTP_DEMO") == "1":
+    st.warning(
+        "Public prototype: OTP screen par dikhaya ja raha hai, SMS nahi bheja ja raha. "
+        "Yeh real identity verification nahi hai; launch se pehle real SMS OTP configure karein."
+    )
 
 
 # The component keeps the India outline as a real vector map.  It intentionally

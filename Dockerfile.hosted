@@ -7,6 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     NPK_APP_DATA_DIR=/app/persistent/app_data \
     NPK_MODEL_PATH=/app/persistent/artifacts/npk_baseline.npz \
     CROP_DISEASE_MODEL_PATH=/app/persistent/artifacts/crop_disease_baseline.npz \
+    CROP_DISEASE_CNN_MODEL_PATH=/app/artifacts/crop_disease_mobilenetv3.onnx \
+    CROP_DISEASE_CNN_METADATA_PATH=/app/artifacts/crop_disease_mobilenetv3.json \
     PUBLIC_DEPLOYMENT=1
 
 COPY requirements.txt ./
@@ -15,6 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src ./src
 COPY dashboard.py hosted_app.py ./
 COPY assets ./assets
+COPY artifacts/crop_disease_mobilenetv3.onnx artifacts/crop_disease_mobilenetv3.onnx.data artifacts/crop_disease_mobilenetv3.json ./artifacts/
 COPY data/locations ./data/locations
 COPY All_Districtof_India_*.xlsx ./
 COPY All_Sub_Districtof_India_*.xlsx ./
